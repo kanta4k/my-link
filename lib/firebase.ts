@@ -1,5 +1,6 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAnalytics, isSupported, Analytics } from "firebase/analytics";
+import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -14,6 +15,9 @@ const firebaseConfig = {
 // Initialize Firebase App as a singleton to support Next.js Hot Reload and SSR
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
+// Initialize Firestore
+const db = getFirestore(app);
+
 // Initialize Analytics safely (Client-side and supported browsers only)
 let analytics: Analytics | null = null;
 if (typeof window !== "undefined") {
@@ -24,4 +28,4 @@ if (typeof window !== "undefined") {
   });
 }
 
-export { app, analytics };
+export { app, analytics, db };

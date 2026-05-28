@@ -10,6 +10,19 @@ import {
 import { dummyLinks, dummySocials, defaultTags, getFaviconUrl, LinkItem, SocialItem } from "@/Data/links"
 import { Card } from "@/components/ui/card"
 import { Dialog } from "@/components/ui/dialog"
+import { db } from "@/lib/firebase"
+import { 
+  collection, 
+  addDoc, 
+  deleteDoc, 
+  doc, 
+  onSnapshot, 
+  query, 
+  orderBy, 
+  writeBatch, 
+  getDocs, 
+  serverTimestamp 
+} from "firebase/firestore"
 
 // 테마 프리셋 인터페이스 정의
 interface ThemePreset {
@@ -141,24 +154,17 @@ export default function MyPage() {
   // 알림 메시지 피드백 상태
   const [toastMessage, setToastMessage] = useState<string | null>(null)
 
-  // 로컬 스토리지로부터 상태 로드
+  // 로컬 스토리지로부터 프로필, 테마, 소셜 데이터 로드 및 Firestore 링크 실시간 동기화
   useEffect(() => {
     setMounted(true)
 
     const savedProfile = localStorage.getItem("mylink_profile")
-    const savedLinks = localStorage.getItem("mylink_links")
     const savedSocials = localStorage.getItem("mylink_socials")
     const savedTags = localStorage.getItem("mylink_tags")
     const savedThemeId = localStorage.getItem("mylink_theme_id")
 
     if (savedProfile) setProfile(JSON.parse(savedProfile))
     
-    if (savedLinks) {
-      setLinks(JSON.parse(savedLinks))
-    } else {
-      setLinks(dummyLinks)
-    }
-
     if (savedSocials) {
       setSocials(JSON.parse(savedSocials))
     } else {
@@ -174,21 +180,66 @@ export default function MyPage() {
     if (savedThemeId) {
       setActiveThemeId(savedThemeId)
     }
+
+    // Firestore users/anonymous/links 실시간 동기화 및 자동 마이그레이션
+    const q = query(collection(db, "users/anonymous/links"), orderBy("createdAt", "asc"))
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
+      if (snapshot.empty) {
+        // Firestore가 비어 있는 경우 초기 마이그레이션 실행
+        const savedLinks = localStorage.getItem("mylink_links")
+        let initialData: LinkItem[] = dummyLinks
+        
+        if (savedLinks) {
+          try {
+            initialData = JSON.parse(savedLinks)
+          } catch (e) {
+            console.error("Failed to parse saved links from localStorage", e)
+          }
+        }
+        
+        // Firestore로 데이터 업로드
+        try {
+          const batch = writeBatch(db)
+          const linksRef = collection(db, "users/anonymous/links")
+          initialData.forEach((item) => {
+            const newDocRef = doc(linksRef)
+            batch.set(newDocRef, {
+              title: item.title,
+              url: item.url,
+              createdAt: serverTimestamp()
+            })
+          })
+          await batch.commit()
+          localStorage.removeItem("mylink_links") // 중복 방지를 위해 제거
+        } catch (err) {
+          console.error("Migration to Firestore failed", err)
+        }
+      } else {
+        const fetchedLinks = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          title: doc.data().title || "",
+          url: doc.data().url || "",
+        }))
+        setLinks(fetchedLinks)
+      }
+    }, (error) => {
+      console.error("Firestore onSnapshot error: ", error)
+    })
+
+    return () => unsubscribe()
   }, [])
 
   // 활성 프리셋 정보 로드
   const activePreset = themePresets.find(p => p.id === activeThemeId) || themePresets[0]
 
-  // 데이터 통합 저장 유틸리티
+  // 데이터 통합 저장 유틸리티 (로컬 스토리지에 프로필/소셜/태그/테마만 저장)
   const saveAllToLocal = (
     updatedProfile = profile, 
-    updatedLinks = links, 
     updatedSocials = socials, 
     updatedTags = tags,
     themeId = activeThemeId
   ) => {
     localStorage.setItem("mylink_profile", JSON.stringify(updatedProfile))
-    localStorage.setItem("mylink_links", JSON.stringify(updatedLinks))
     localStorage.setItem("mylink_socials", JSON.stringify(updatedSocials))
     localStorage.setItem("mylink_tags", JSON.stringify(updatedTags))
     localStorage.setItem("mylink_theme_id", themeId)
@@ -222,7 +273,7 @@ export default function MyPage() {
 
     const updated = [...tags, val]
     setTags(updated)
-    saveAllToLocal(profile, links, socials, updated)
+    saveAllToLocal(profile, socials, updated)
     setNewTag("")
     setIsAddingTag(false)
     showToast("🏷️ 관심 스택이 프로필에 반영되었습니다.")
@@ -232,7 +283,7 @@ export default function MyPage() {
   const handleDeleteTag = (targetTag: string) => {
     const updated = tags.filter(t => t !== targetTag)
     setTags(updated)
-    saveAllToLocal(profile, links, socials, updated)
+    saveAllToLocal(profile, socials, updated)
     showToast("🗑️ 태그가 삭제되었습니다.")
   }
 
@@ -289,7 +340,7 @@ export default function MyPage() {
     })
 
     setSocials(updated)
-    saveAllToLocal(profile, links, updated)
+    saveAllToLocal(profile, updated)
     setEditingSocialPlatform(null)
     setTempSocialUrl("")
     showToast(`🔗 ${editingSocialPlatform.toUpperCase()} 주소가 업데이트되었습니다.`)
@@ -303,7 +354,7 @@ export default function MyPage() {
   }
 
   // 다이얼로그 폼을 통한 링크 신규 추가
-  const handleAddLinkSubmit = (e: React.FormEvent) => {
+  const handleAddLinkSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
     // 1. 제목/주소 가져오기
@@ -345,30 +396,34 @@ export default function MyPage() {
       return
     }
 
-    // 3. 목록에 추가
-    const newLinkItem: LinkItem = {
-      id: `link-${Date.now()}`,
-      title,
-      url
+    // 3. Firestore에 추가
+    try {
+      await addDoc(collection(db, "users/anonymous/links"), {
+        title,
+        url,
+        createdAt: serverTimestamp()
+      })
+      setIsDialogOpen(false)
+      showToast("🎉 새 링크 카드가 성공적으로 추가되었습니다!")
+    } catch (err) {
+      console.error("Failed to add link to Firestore", err)
+      showToast("❌ 링크 카드 추가에 실패했습니다.")
     }
-
-    const updated = [...links, newLinkItem]
-    setLinks(updated)
-    saveAllToLocal(profile, updated)
-    setIsDialogOpen(false)
-    showToast("🎉 새 링크 카드가 성공적으로 추가되었습니다!")
   }
 
   // 링크 삭제
-  const handleDeleteLink = (id: string) => {
-    const updated = links.filter(link => link.id !== id)
-    setLinks(updated)
-    saveAllToLocal(profile, updated)
-    showToast("🗑️ 링크 카드가 목록에서 삭제되었습니다.")
+  const handleDeleteLink = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, "users/anonymous/links", id))
+      showToast("🗑️ 링크 카드가 목록에서 삭제되었습니다.")
+    } catch (err) {
+      console.error("Failed to delete link from Firestore", err)
+      showToast("❌ 링크 삭제에 실패했습니다.")
+    }
   }
 
   // 전체 데이터 데모 상태로 초기화 (Danger Zone)
-  const handleResetToDemo = () => {
+  const handleResetToDemo = async () => {
     if (confirm("🚨 경고: 정말 모든 데이터를 데모 초기값으로 복구하시겠습니까?\n현재 브라우저에 임시 저장된 모든 프로필 및 링크 카드 수정 이력이 초기화됩니다.")) {
       const defaultProfile = {
         displayName: "정운학 (Unhak Jeong)",
@@ -376,14 +431,40 @@ export default function MyPage() {
         avatarInitials: "JU"
       }
 
-      setProfile(defaultProfile)
-      setLinks(dummyLinks)
-      setSocials(dummySocials)
-      setTags(defaultTags)
-      setActiveThemeId("cyberpunk")
+      try {
+        // Firestore 컬렉션 일괄 삭제 및 복구
+        const linksRef = collection(db, "users/anonymous/links")
+        const snapshot = await getDocs(linksRef)
+        const batch = writeBatch(db)
 
-      saveAllToLocal(defaultProfile, dummyLinks, dummySocials, defaultTags, "cyberpunk")
-      showToast("🔄 데이터가 데모 기본값으로 완벽하게 초기화되었습니다.")
+        // 기존 문서 삭제 등록
+        snapshot.docs.forEach((doc) => {
+          batch.delete(doc.ref)
+        })
+
+        // 더미데이터 추가 등록
+        dummyLinks.forEach((item) => {
+          const newDocRef = doc(linksRef)
+          batch.set(newDocRef, {
+            title: item.title,
+            url: item.url,
+            createdAt: serverTimestamp()
+          })
+        })
+
+        await batch.commit()
+
+        setProfile(defaultProfile)
+        setSocials(dummySocials)
+        setTags(defaultTags)
+        setActiveThemeId("cyberpunk")
+
+        saveAllToLocal(defaultProfile, dummySocials, defaultTags, "cyberpunk")
+        showToast("🔄 데이터가 데모 기본값으로 완벽하게 초기화되었습니다.")
+      } catch (err) {
+        console.error("Failed to reset Firestore to demo data", err)
+        showToast("❌ 데모 복구 초기화에 실패했습니다.")
+      }
     }
   }
 

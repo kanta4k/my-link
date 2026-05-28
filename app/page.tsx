@@ -8,6 +8,16 @@ import {
   ArrowRight, LayoutTemplate
 } from "lucide-react"
 import { dummyLinks, dummySocials, defaultTags, getFaviconUrl, LinkItem, SocialItem } from "@/Data/links"
+import { db } from "@/lib/firebase"
+import { 
+  collection, 
+  onSnapshot, 
+  query, 
+  orderBy, 
+  writeBatch, 
+  doc, 
+  serverTimestamp 
+} from "firebase/firestore"
 
 // 테마 프리셋 인터페이스 정의
 interface ThemePreset {
@@ -124,24 +134,17 @@ export default function Page() {
   const [socials, setSocials] = useState<SocialItem[]>([])
   const [tags, setTags] = useState<string[]>([])
 
-  // Hydration mismatch 방지 및 로컬스토리지 로딩
+  // Hydration mismatch 방지, 로컬스토리지 로딩 및 Firestore 실시간 동기화
   useEffect(() => {
     setMounted(true)
     
     const savedProfile = localStorage.getItem("mylink_profile")
-    const savedLinks = localStorage.getItem("mylink_links")
     const savedSocials = localStorage.getItem("mylink_socials")
     const savedTags = localStorage.getItem("mylink_tags")
     const savedThemeId = localStorage.getItem("mylink_theme_id")
 
     if (savedProfile) setProfile(JSON.parse(savedProfile))
     
-    if (savedLinks) {
-      setLinks(JSON.parse(savedLinks))
-    } else {
-      setLinks(dummyLinks)
-    }
-
     if (savedSocials) {
       setSocials(JSON.parse(savedSocials))
     } else {
@@ -157,6 +160,53 @@ export default function Page() {
     if (savedThemeId) {
       setActiveThemeId(savedThemeId)
     }
+
+    // Firestore users/anonymous/links 실시간 동기화 및 자동 마이그레이션
+    const q = query(collection(db, "users/anonymous/links"), orderBy("createdAt", "asc"))
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
+      if (snapshot.empty) {
+        // Firestore가 비어 있는 경우 초기 마이그레이션 실행
+        const savedLinks = localStorage.getItem("mylink_links")
+        let initialData: LinkItem[] = dummyLinks
+        
+        if (savedLinks) {
+          try {
+            initialData = JSON.parse(savedLinks)
+          } catch (e) {
+            console.error("Failed to parse saved links from localStorage", e)
+          }
+        }
+        
+        // Firestore로 데이터 업로드
+        try {
+          const batch = writeBatch(db)
+          const linksRef = collection(db, "users/anonymous/links")
+          initialData.forEach((item) => {
+            const newDocRef = doc(linksRef)
+            batch.set(newDocRef, {
+              title: item.title,
+              url: item.url,
+              createdAt: serverTimestamp()
+})
+          })
+          await batch.commit()
+          localStorage.removeItem("mylink_links") // 중복 방지를 위해 제거
+        } catch (err) {
+          console.error("Migration to Firestore failed", err)
+        }
+      } else {
+        const fetchedLinks = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          title: doc.data().title || "",
+          url: doc.data().url || "",
+        }))
+        setLinks(fetchedLinks)
+      }
+    }, (error) => {
+      console.error("Firestore onSnapshot error: ", error)
+    })
+
+    return () => unsubscribe()
   }, [])
 
   // 활성 프리셋 정보 로드
