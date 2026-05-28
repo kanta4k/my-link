@@ -1,45 +1,78 @@
 /**
  * 마이링크(MyLink) 제품 요구사항 정의서(PRD)의 
  * "Google Favicon API 기반 썸네일 아이콘 연동" 규격에 따라 설계된 링크 데이터 구조입니다.
- * 
- * URL 입력 시 Google Favicon API(https://www.google.com/s2/favicons?domain=도메인)를
- * 통해 자동으로 공식 아이콘을 추출하여 표시하는 것이 MVP 기본 스펙입니다.
  */
 
 export interface LinkItem {
   id: string;
   title: string;
   url: string;
-  icon?: string; // (선택) 커스텀 아이콘 경로 또는 특정 식별자가 필요할 경우를 위한 옵션 필드
+  icon?: string;
+}
+
+export interface SocialItem {
+  id: string;
+  platform: 'github' | 'linkedin' | 'twitter' | 'youtube' | 'instagram' | 'blog' | 'email';
+  url: string;
 }
 
 export const dummyLinks: LinkItem[] = [
   {
-    id: 'instagram',
-    title: '인스타그램',
-    url: 'https://instagram.com',
+    id: 'link-1',
+    title: 'Next.js 공식 문서',
+    url: 'https://nextjs.org',
   },
   {
-    id: 'youtube',
-    title: '유튜브',
-    url: 'https://youtube.com',
+    id: 'link-2',
+    title: 'Tailwind CSS 디자인 가이드',
+    url: 'https://tailwindcss.com',
   },
   {
-    id: 'blog',
-    title: '블로그',
-    url: 'https://velog.io',
-  },
-  {
-    id: 'github',
-    title: 'Github',
+    id: 'link-3',
+    title: '깃허브 개인 저장소 (Github)',
     url: 'https://github.com',
   },
   {
-    id: 'portfolio',
-    title: '포트폴리오',
-    url: 'https://my-portfolio-example.com', // 해당 도메인의 파비콘을 자동으로 가져옴
+    id: 'link-4',
+    title: '개발 기술 블로그 (Velog)',
+    url: 'https://velog.io',
+  },
+  {
+    id: 'link-5',
+    title: '유튜브 채널',
+    url: 'https://youtube.com',
   },
 ];
+
+export const dummySocials: SocialItem[] = [
+  {
+    id: 'social-1',
+    platform: 'github',
+    url: 'https://github.com',
+  },
+  {
+    id: 'social-2',
+    platform: 'linkedin',
+    url: 'https://linkedin.com',
+  },
+  {
+    id: 'social-3',
+    platform: 'twitter',
+    url: 'https://twitter.com',
+  },
+  {
+    id: 'social-4',
+    platform: 'youtube',
+    url: 'https://youtube.com',
+  },
+  {
+    id: 'social-5',
+    platform: 'instagram',
+    url: 'https://instagram.com',
+  },
+];
+
+export const defaultTags: string[] = ['Developer', 'Frontend', 'Next.js 16', 'Tailwind v4', 'UI/UX'];
 
 /**
  * [PRD 준수 유틸리티]
