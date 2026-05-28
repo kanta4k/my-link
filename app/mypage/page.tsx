@@ -453,7 +453,7 @@ export default function MyPage() {
 
       {/* 실시간 알림 토스트 피드백 */}
       {toastMessage && (
-        <div className="fixed top-6 left-1/2 z-50 -translate-x-1/2 flex items-center gap-2 rounded-full bg-zinc-900/95 border border-white/10 px-5 py-3 shadow-2xl text-xs font-semibold text-white backdrop-blur-md animate-fade-in-down">
+        <div className="fixed top-6 left-1/2 z-[100] -translate-x-1/2 flex items-center gap-2 rounded-full bg-zinc-900/95 border border-white/10 px-5 py-3 shadow-2xl text-xs font-semibold text-white backdrop-blur-md animate-fade-in-down">
           <Sparkles className="h-4 w-4 text-amber-400 animate-spin-[spin_3s_linear_infinite]" />
           <span>{toastMessage}</span>
         </div>
@@ -852,7 +852,6 @@ export default function MyPage() {
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
               className="w-full bg-zinc-950 border border-white/10 rounded-xl py-2.5 px-3 text-xs text-white outline-none focus:border-amber-400"
-              required
               autoFocus
             />
           </div>
@@ -868,7 +867,6 @@ export default function MyPage() {
               value={newUrl}
               onChange={(e) => setNewUrl(e.target.value)}
               className="w-full bg-zinc-950 border border-white/10 rounded-xl py-2.5 px-3 text-xs text-white outline-none focus:border-amber-400"
-              required
             />
           </div>
 
