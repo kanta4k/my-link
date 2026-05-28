@@ -162,7 +162,7 @@ export default function Page() {
     }
 
     // Firestore users/anonymous/links 실시간 동기화 및 자동 마이그레이션
-    const q = query(collection(db, "users/anonymous/links"), orderBy("createdAt", "asc"))
+    const q = query(collection(db, "users/anonymous/links"), orderBy("createdAt", "desc"))
     const unsubscribe = onSnapshot(q, async (snapshot) => {
       if (snapshot.empty) {
         // Firestore가 비어 있는 경우 초기 마이그레이션 실행
