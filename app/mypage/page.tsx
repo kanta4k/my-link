@@ -254,8 +254,31 @@ export default function MyPage() {
     if (!editingSocialPlatform) return
     let finalUrl = tempSocialUrl.trim()
 
-    if (finalUrl && !/^https?:\/\//i.test(finalUrl) && editingSocialPlatform !== 'email') {
-      finalUrl = "https://" + finalUrl
+    // 공백이 아닌 경우에만 유효성 정밀 검증
+    if (finalUrl) {
+      if (editingSocialPlatform === 'email') {
+        // 간단한 이메일 정규식 필터링
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+        if (!emailRegex.test(finalUrl)) {
+          showToast("❌ 올바른 이메일 주소를 입력하세요.")
+          return
+        }
+      } else {
+        // 소셜 URL 보완 및 검증
+        if (!/^https?:\/\//i.test(finalUrl)) {
+          finalUrl = "https://" + finalUrl
+        }
+
+        try {
+          const parsedUrl = new URL(finalUrl)
+          if (!parsedUrl.hostname.includes(".")) {
+            throw new Error("Invalid domain")
+          }
+        } catch (err) {
+          showToast("❌ 올바른 소셜 주소를 입력하세요.")
+          return
+        }
+      }
     }
 
     const updated = socials.map(item => {
@@ -291,8 +314,22 @@ export default function MyPage() {
     }
 
     // 간단한 URL 포맷 체크 및 프로토콜(https) 보완
-    if (!/^https?:\/\//i.test(url)) {
-      url = "https://" + url
+    let testUrl = url
+    if (!/^https?:\/\//i.test(testUrl)) {
+      testUrl = "https://" + testUrl
+    }
+
+    // 정교한 URL 유효성 및 도메인 구조 필터링 검증
+    try {
+      const parsedUrl = new URL(testUrl)
+      // 호스트네임에 최소한 온전한 도메인 마크(.)가 포함되어 있는지 체크
+      if (!parsedUrl.hostname.includes(".")) {
+        throw new Error("Invalid domain")
+      }
+      url = testUrl // 검증 완료 시 보완된 URL 적용
+    } catch (err) {
+      showToast("❌ 올바른 주소를 입력하세요.")
+      return
     }
 
     const newLinkItem: LinkItem = {
