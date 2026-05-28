@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { 
   Sparkles, Plus, Trash2, ArrowLeft, Eye, Link2, 
   User, FileText, BadgePlus, HelpCircle, RotateCcw, 
-  LayoutTemplate, AlertTriangle, Globe, Mail, Save, Edit3, Check
+  LayoutTemplate, AlertTriangle, Globe, Mail, Save, Edit3, Check, X
 } from "lucide-react"
 import { dummyLinks, dummySocials, defaultTags, getFaviconUrl, LinkItem, SocialItem } from "@/Data/links"
 import { Card } from "@/components/ui/card"
@@ -15,6 +15,8 @@ import {
   collection, 
   addDoc, 
   deleteDoc, 
+  updateDoc, 
+  setDoc,
   doc, 
   onSnapshot, 
   query, 
@@ -154,22 +156,24 @@ export default function MyPage() {
   // 알림 메시지 피드백 상태
   const [toastMessage, setToastMessage] = useState<string | null>(null)
 
+  // 링크 인라인 편집 상태
+  const [editingLinkId, setEditingLinkId] = useState<string | null>(null)
+  const [editTitle, setEditTitle] = useState("")
+  const [editUrl, setEditUrl] = useState("")
+
+  // 링크 삭제 확인 모달 상태
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
+  const [linkToDeleteId, setLinkToDeleteId] = useState<string | null>(null)
+
   // 로컬 스토리지로부터 프로필, 테마, 소셜 데이터 로드 및 Firestore 링크 실시간 동기화
   useEffect(() => {
     setMounted(true)
 
     const savedProfile = localStorage.getItem("mylink_profile")
-    const savedSocials = localStorage.getItem("mylink_socials")
     const savedTags = localStorage.getItem("mylink_tags")
     const savedThemeId = localStorage.getItem("mylink_theme_id")
 
     if (savedProfile) setProfile(JSON.parse(savedProfile))
-    
-    if (savedSocials) {
-      setSocials(JSON.parse(savedSocials))
-    } else {
-      setSocials(dummySocials)
-    }
 
     if (savedTags) {
       setTags(JSON.parse(savedTags))
@@ -226,7 +230,46 @@ export default function MyPage() {
       console.error("Firestore onSnapshot error: ", error)
     })
 
-    return () => unsubscribe()
+    // Firestore users/anonymous/socials 실시간 동기화 및 자동 마이그레이션
+    const socialsRef = collection(db, "users/anonymous/socials")
+    const unsubscribeSocials = onSnapshot(socialsRef, async (snapshot) => {
+      if (snapshot.empty) {
+        // Firestore가 비어 있는 경우 초기 dummySocials 마이그레이션 실행
+        try {
+          const batch = writeBatch(db)
+          dummySocials.forEach((item) => {
+            const docRef = doc(db, "users/anonymous/socials", item.platform)
+            batch.set(docRef, {
+              platform: item.platform,
+              url: item.url
+            })
+          })
+          await batch.commit()
+        } catch (err) {
+          console.error("Socials migration to Firestore failed", err)
+        }
+      } else {
+        const fetchedSocials = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          platform: doc.data().platform || doc.id,
+          url: doc.data().url || "",
+        })) as SocialItem[]
+
+        // 순서 고정: dummySocials의 순서대로 정렬
+        const order = ['github', 'linkedin', 'twitter', 'youtube', 'instagram']
+        const sortedSocials = [...fetchedSocials].sort((a, b) => {
+          return order.indexOf(a.platform) - order.indexOf(b.platform)
+        })
+        setSocials(sortedSocials)
+      }
+    }, (error) => {
+      console.error("Firestore socials onSnapshot error: ", error)
+    })
+
+    return () => {
+      unsubscribe()
+      unsubscribeSocials()
+    }
   }, [])
 
   // 활성 프리셋 정보 로드
@@ -301,7 +344,7 @@ export default function MyPage() {
   }
 
   // 소셜 미디어 링크 저장
-  const saveSocialLink = () => {
+  const saveSocialLink = async () => {
     if (!editingSocialPlatform) return
     let finalUrl = tempSocialUrl.trim()
 
@@ -332,18 +375,20 @@ export default function MyPage() {
       }
     }
 
-    const updated = socials.map(item => {
-      if (item.platform === editingSocialPlatform) {
-        return { ...item, url: finalUrl }
-      }
-      return item
-    })
+    try {
+      // Firestore에 직접 업데이트 연동
+      await setDoc(doc(db, "users/anonymous/socials", editingSocialPlatform), {
+        platform: editingSocialPlatform,
+        url: finalUrl
+      }, { merge: true })
 
-    setSocials(updated)
-    saveAllToLocal(profile, updated)
-    setEditingSocialPlatform(null)
-    setTempSocialUrl("")
-    showToast(`🔗 ${editingSocialPlatform.toUpperCase()} 주소가 업데이트되었습니다.`)
+      setEditingSocialPlatform(null)
+      setTempSocialUrl("")
+      showToast(`🔗 ${editingSocialPlatform.toUpperCase()} 주소가 업데이트되었습니다.`)
+    } catch (err) {
+      console.error("Failed to save social link to Firestore", err)
+      showToast("❌ 소셜 주소 업데이트에 실패했습니다.")
+    }
   }
 
   // 다이얼로그 열기
@@ -411,15 +456,89 @@ export default function MyPage() {
     }
   }
 
-  // 링크 삭제
-  const handleDeleteLink = async (id: string) => {
+  // 링크 삭제 확인 모달 열기
+  const openDeleteConfirm = (id: string) => {
+    setLinkToDeleteId(id)
+    setIsDeleteConfirmOpen(true)
+  }
+
+  // 실제 링크 삭제 실행 (Firestore 연동)
+  const confirmDeleteLink = async () => {
+    if (!linkToDeleteId) return
     try {
-      await deleteDoc(doc(db, "users/anonymous/links", id))
+      await deleteDoc(doc(db, "users/anonymous/links", linkToDeleteId))
+      setIsDeleteConfirmOpen(false)
+      setLinkToDeleteId(null)
       showToast("🗑️ 링크 카드가 목록에서 삭제되었습니다.")
     } catch (err) {
       console.error("Failed to delete link from Firestore", err)
       showToast("❌ 링크 삭제에 실패했습니다.")
     }
+  }
+
+  // 링크 인라인 편집 개시
+  const startEditingLink = (id: string, currentTitle: string, currentUrl: string) => {
+    setEditingLinkId(id)
+    setEditTitle(currentTitle)
+    setEditUrl(currentUrl)
+  }
+
+  // 링크 인라인 편집 저장 (Firestore 연동 및 유효성 검증)
+  const handleUpdateLinkSubmit = async (id: string) => {
+    const title = editTitle.trim()
+    let url = editUrl.trim()
+
+    // 1. 빈칸 검증
+    if (!title) {
+      showToast("❌ 제목을 입력해주세요")
+      return
+    }
+    if (!url) {
+      showToast("❌ 주소를 입력해주세요")
+      return
+    }
+
+    // 2. URL 유효성 및 프로토콜 검증
+    let testUrl = url
+    if (!/^https?:\/\//i.test(testUrl)) {
+      testUrl = "https://" + testUrl
+    }
+
+    let isValidUrl = false
+    try {
+      const parsedUrl = new URL(testUrl)
+      if (parsedUrl.hostname && parsedUrl.hostname.includes(".")) {
+        isValidUrl = true
+        url = testUrl
+      }
+    } catch (err) {
+      // 파싱 오류 시 isValidUrl은 false 유지
+    }
+
+    if (!isValidUrl) {
+      showToast("❌ 올바른 주소를 입력해주세요")
+      return
+    }
+
+    // 3. Firestore 업데이트 연동
+    try {
+      await updateDoc(doc(db, "users/anonymous/links", id), {
+        title,
+        url
+      })
+      setEditingLinkId(null)
+      showToast("✏️ 링크 카드가 성공적으로 수정되었습니다!")
+    } catch (err) {
+      console.error("Failed to update link in Firestore", err)
+      showToast("❌ 링크 카드 수정에 실패했습니다.")
+    }
+  }
+
+  // 링크 인라인 편집 취소
+  const handleCancelEdit = () => {
+    setEditingLinkId(null)
+    setEditTitle("")
+    setEditUrl("")
   }
 
   // 전체 데이터 데모 상태로 초기화 (Danger Zone)
@@ -449,6 +568,20 @@ export default function MyPage() {
             title: item.title,
             url: item.url,
             createdAt: serverTimestamp()
+          })
+        })
+
+        // 소셜 데이터도 일괄 삭제 및 복구
+        const socialsRef = collection(db, "users/anonymous/socials")
+        const socialsSnapshot = await getDocs(socialsRef)
+        socialsSnapshot.docs.forEach((doc) => {
+          batch.delete(doc.ref)
+        })
+        dummySocials.forEach((item) => {
+          const docRef = doc(db, "users/anonymous/socials", item.platform)
+          batch.set(docRef, {
+            platform: item.platform,
+            url: item.url
           })
         })
 
@@ -743,12 +876,14 @@ export default function MyPage() {
             {links.map((link) => {
               const faviconUrl = getFaviconUrl(link.url, 64)
               
+              const isLinkEditing = editingLinkId === link.id
+
               return (
                 <div 
                   key={link.id}
-                  className="flex items-center justify-between p-3.5 rounded-2xl bg-zinc-950/40 border border-white/5 hover:border-white/10 transition-all duration-200 group text-left"
+                  className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-2xl bg-zinc-950/40 border border-white/5 hover:border-white/10 transition-all duration-200 group text-left gap-3"
                 >
-                  <div className="flex items-center gap-3 overflow-hidden text-left">
+                  <div className="flex items-center gap-3 overflow-hidden text-left flex-grow">
                     {/* 파비콘 */}
                     <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-white p-1.5 border border-white/10 shadow-sm">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -772,25 +907,76 @@ export default function MyPage() {
                         }}
                       />
                     </div>
-                    {/* 텍스트 타이틀 */}
-                    <div className="overflow-hidden">
-                      <h4 className="text-xs font-bold text-zinc-100 group-hover:text-white truncate">
-                        {link.title}
-                      </h4>
-                      <p className="text-[10px] text-zinc-500 truncate mt-0.5 max-w-[240px] sm:max-w-[320px]">
-                        {link.url}
-                      </p>
-                    </div>
+                    
+                    {/* 텍스트 타이틀 혹은 인라인 수정 인풋 */}
+                    {isLinkEditing ? (
+                      <div className="flex flex-col gap-1.5 flex-grow pr-1">
+                        <input
+                          type="text"
+                          value={editTitle}
+                          onChange={(e) => setEditTitle(e.target.value)}
+                          placeholder="링크 제목을 입력하세요"
+                          className="w-full bg-zinc-950 border border-white/15 rounded-lg px-2.5 py-1 text-xs text-white outline-none focus:border-amber-400"
+                          autoFocus
+                        />
+                        <input
+                          type="text"
+                          value={editUrl}
+                          onChange={(e) => setEditUrl(e.target.value)}
+                          placeholder="연결 URL 주소를 입력하세요"
+                          className="w-full bg-zinc-950 border border-white/15 rounded-lg px-2.5 py-1 text-[11px] text-zinc-300 outline-none focus:border-amber-400"
+                        />
+                      </div>
+                    ) : (
+                      <div className="overflow-hidden">
+                        <h4 className="text-xs font-bold text-zinc-100 group-hover:text-white truncate">
+                          {link.title}
+                        </h4>
+                        <p className="text-[10px] text-zinc-500 truncate mt-0.5 max-w-[200px] sm:max-w-[280px]">
+                          {link.url}
+                        </p>
+                      </div>
+                    )}
                   </div>
 
-                  {/* 삭제 버튼 */}
-                  <button
-                    onClick={() => handleDeleteLink(link.id)}
-                    className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/25 transition-all duration-200 hover:scale-105 active:scale-95 cursor-pointer flex-shrink-0"
-                    title="링크 제거"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  {/* 액션 버튼 영역 */}
+                  <div className="flex items-center gap-1.5 flex-shrink-0 justify-end sm:justify-start">
+                    {isLinkEditing ? (
+                      <>
+                        <button
+                          onClick={() => handleUpdateLinkSubmit(link.id)}
+                          className="p-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-zinc-950 transition-all duration-200 hover:scale-105 active:scale-95 cursor-pointer"
+                          title="저장"
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={handleCancelEdit}
+                          className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 transition-all duration-200 hover:scale-105 active:scale-95 cursor-pointer border border-white/5"
+                          title="취소"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => startEditingLink(link.id, link.title, link.url)}
+                          className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 text-zinc-300 hover:text-white transition-all duration-200 hover:scale-105 active:scale-95 cursor-pointer"
+                          title="링크 수정"
+                        >
+                          <Edit3 className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => openDeleteConfirm(link.id)}
+                          className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/25 transition-all duration-200 hover:scale-105 active:scale-95 cursor-pointer"
+                          title="링크 제거"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               )
             })}
@@ -825,10 +1011,16 @@ export default function MyPage() {
             {socials.map((social) => {
               const isEditing = editingSocialPlatform === social.platform
 
+              const hasUrl = !!social.url
+
               return (
                 <div 
                   key={social.id}
-                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-zinc-950/40 rounded-2xl border border-white/5 hover:border-white/10 transition-colors"
+                  className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-zinc-950/40 rounded-2xl border transition-all duration-300 ${
+                    hasUrl || isEditing 
+                      ? "border-white/5 opacity-100" 
+                      : "border-white/0 opacity-40 hover:opacity-75"
+                  }`}
                 >
                   <div className="flex items-center gap-2.5">
                     <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/5 border border-white/5 text-zinc-300">
@@ -864,8 +1056,10 @@ export default function MyPage() {
                       </div>
                     ) : (
                       <>
-                        <span className="text-[10px] text-zinc-500 font-medium truncate max-w-[160px] sm:max-w-[200px] flex-grow text-right pr-2">
-                          {social.url ? social.url : "(미설정)"}
+                        <span className={`text-[10px] font-medium truncate max-w-[160px] sm:max-w-[200px] flex-grow text-right pr-2 ${
+                          hasUrl ? "text-zinc-500" : "text-zinc-600 italic"
+                        }`}>
+                          {hasUrl ? social.url : "(미설정 / 사용 안 함)"}
                         </span>
                         <button
                           onClick={() => startEditingSocial(social.platform, social.url)}
@@ -968,6 +1162,47 @@ export default function MyPage() {
             </button>
           </div>
         </form>
+      </Dialog>
+
+      {/* 3단계: 링크 삭제 확인 다이얼로그 모달 */}
+      <Dialog
+        isOpen={isDeleteConfirmOpen}
+        onClose={() => {
+          setIsDeleteConfirmOpen(false)
+          setLinkToDeleteId(null)
+        }}
+        title="마이링크 카드 삭제 확인"
+      >
+        <div className="flex flex-col gap-4 text-left">
+          <div className="flex items-center gap-3 p-3 bg-red-500/10 border border-red-500/20 rounded-2xl">
+            <AlertTriangle className="h-6 w-6 text-red-400 flex-shrink-0 animate-bounce" />
+            <div className="text-xs text-red-200">
+              <p className="font-black">정말 이 링크 카드를 목록에서 삭제하시겠습니까?</p>
+              <p className="mt-1 font-medium text-red-300/80 text-[10px]">이 작업은 되돌릴수 없습니다</p>
+            </div>
+          </div>
+
+          {/* 하단 액션 버튼 */}
+          <div className="flex justify-end gap-2.5 mt-2 border-t border-white/5 pt-4">
+            <button
+              type="button"
+              onClick={() => {
+                setIsDeleteConfirmOpen(false)
+                setLinkToDeleteId(null)
+              }}
+              className="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-300 text-xs font-semibold cursor-pointer"
+            >
+              취소
+            </button>
+            <button
+              type="button"
+              onClick={confirmDeleteLink}
+              className="px-4.5 py-2 rounded-xl bg-red-500 hover:bg-red-400 text-zinc-950 text-xs font-black shadow-lg hover:brightness-110 transition-all cursor-pointer"
+            >
+              삭제
+            </button>
+          </div>
+        </div>
       </Dialog>
     </main>
   )

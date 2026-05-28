@@ -16,6 +16,7 @@ import {
   orderBy, 
   writeBatch, 
   doc, 
+  setDoc,
   serverTimestamp 
 } from "firebase/firestore"
 
@@ -139,17 +140,10 @@ export default function Page() {
     setMounted(true)
     
     const savedProfile = localStorage.getItem("mylink_profile")
-    const savedSocials = localStorage.getItem("mylink_socials")
     const savedTags = localStorage.getItem("mylink_tags")
     const savedThemeId = localStorage.getItem("mylink_theme_id")
 
     if (savedProfile) setProfile(JSON.parse(savedProfile))
-    
-    if (savedSocials) {
-      setSocials(JSON.parse(savedSocials))
-    } else {
-      setSocials(dummySocials)
-    }
 
     if (savedTags) {
       setTags(JSON.parse(savedTags))
@@ -187,7 +181,7 @@ export default function Page() {
               title: item.title,
               url: item.url,
               createdAt: serverTimestamp()
-})
+            })
           })
           await batch.commit()
           localStorage.removeItem("mylink_links") // 중복 방지를 위해 제거
@@ -206,7 +200,46 @@ export default function Page() {
       console.error("Firestore onSnapshot error: ", error)
     })
 
-    return () => unsubscribe()
+    // Firestore users/anonymous/socials 실시간 동기화 및 자동 마이그레이션
+    const socialsRef = collection(db, "users/anonymous/socials")
+    const unsubscribeSocials = onSnapshot(socialsRef, async (snapshot) => {
+      if (snapshot.empty) {
+        // Firestore가 비어 있는 경우 초기 dummySocials 마이그레이션 실행
+        try {
+          const batch = writeBatch(db)
+          dummySocials.forEach((item) => {
+            const docRef = doc(db, "users/anonymous/socials", item.platform)
+            batch.set(docRef, {
+              platform: item.platform,
+              url: item.url
+            })
+          })
+          await batch.commit()
+        } catch (err) {
+          console.error("Socials migration to Firestore failed", err)
+        }
+      } else {
+        const fetchedSocials = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          platform: doc.data().platform || doc.id,
+          url: doc.data().url || "",
+        })) as SocialItem[]
+
+        // 순서 고정: dummySocials의 순서대로 정렬
+        const order = ['github', 'linkedin', 'twitter', 'youtube', 'instagram']
+        const sortedSocials = [...fetchedSocials].sort((a, b) => {
+          return order.indexOf(a.platform) - order.indexOf(b.platform)
+        })
+        setSocials(sortedSocials)
+      }
+    }, (error) => {
+      console.error("Firestore socials onSnapshot error: ", error)
+    })
+
+    return () => {
+      unsubscribe()
+      unsubscribeSocials()
+    }
   }, [])
 
   // 활성 프리셋 정보 로드
@@ -424,24 +457,28 @@ export default function Page() {
       </div>
 
       {/* 5. 하단 고정형 세련된 소셜 미디어 독 */}
-      <nav className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2 flex items-center gap-4 bg-zinc-900/70 dark:bg-black/40 border border-white/10 dark:border-white/5 backdrop-blur-xl px-5 py-2.5 rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.4)] transition-transform duration-300 hover:scale-105">
-        {socials.map((social) => (
-          <a
-            key={social.id}
-            href={social.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="relative group/social p-2 rounded-full text-zinc-400 hover:text-white dark:hover:text-cyan-400 hover:bg-white/5 transition-all duration-300"
-          >
-            {renderSocialIcon(social.platform)}
-            
-            {/* 호버 툴팁 */}
-            <span className="absolute -top-9 left-1/2 -translate-x-1/2 scale-0 group-hover/social:scale-100 bg-zinc-950 border border-white/10 text-[9px] text-white px-2 py-1 rounded-md font-bold tracking-widest uppercase transition-all duration-300 shadow-2xl pointer-events-none whitespace-nowrap">
-              {social.platform}
-            </span>
-          </a>
-        ))}
-      </nav>
+      {socials.filter((s) => s.url).length > 0 && (
+        <nav className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2 flex items-center gap-4 bg-zinc-900/70 dark:bg-black/40 border border-white/10 dark:border-white/5 backdrop-blur-xl px-5 py-2.5 rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.4)] transition-transform duration-300 hover:scale-105">
+          {socials
+            .filter((social) => social.url)
+            .map((social) => (
+              <a
+                key={social.id}
+                href={social.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="relative group/social p-2 rounded-full text-zinc-400 hover:text-white dark:hover:text-cyan-400 hover:bg-white/5 transition-all duration-300"
+              >
+                {renderSocialIcon(social.platform)}
+                
+                {/* 호버 툴팁 */}
+                <span className="absolute -top-9 left-1/2 -translate-x-1/2 scale-0 group-hover/social:scale-100 bg-zinc-950 border border-white/10 text-[9px] text-white px-2 py-1 rounded-md font-bold tracking-widest uppercase transition-all duration-300 shadow-2xl pointer-events-none whitespace-nowrap">
+                  {social.platform}
+                </span>
+              </a>
+            ))}
+        </nav>
+      )}
     </main>
   )
 }
