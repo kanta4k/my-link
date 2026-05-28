@@ -305,33 +305,47 @@ export default function MyPage() {
   // 다이얼로그 폼을 통한 링크 신규 추가
   const handleAddLinkSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    
+    // 1. 제목/주소 가져오기
     const title = newTitle.trim()
     let url = newUrl.trim()
 
-    if (!title || !url) {
-      showToast("❌ 제목과 URL 주소를 모두 채워주세요.")
+    // 2. 검증
+    // 2-1. 빈칸 체크 (제목)
+    if (!title) {
+      showToast("❌ 제목을 입력해주세요")
       return
     }
 
-    // 간단한 URL 포맷 체크 및 프로토콜(https) 보완
+    // 2-2. 빈칸 체크 (주소)
+    if (!url) {
+      showToast("❌ 주소를 입력해주세요")
+      return
+    }
+
+    // 2-3. 주소형식 체크
     let testUrl = url
     if (!/^https?:\/\//i.test(testUrl)) {
       testUrl = "https://" + testUrl
     }
 
-    // 정교한 URL 유효성 및 도메인 구조 필터링 검증
+    let isValidUrl = false
     try {
       const parsedUrl = new URL(testUrl)
-      // 호스트네임에 최소한 온전한 도메인 마크(.)가 포함되어 있는지 체크
-      if (!parsedUrl.hostname.includes(".")) {
-        throw new Error("Invalid domain")
+      if (parsedUrl.hostname && parsedUrl.hostname.includes(".")) {
+        isValidUrl = true
+        url = testUrl
       }
-      url = testUrl // 검증 완료 시 보완된 URL 적용
     } catch (err) {
-      showToast("❌ 올바른 주소를 입력하세요.")
+      // parsedUrl 파싱 실패 시 isValidUrl은 false 유지
+    }
+
+    if (!isValidUrl) {
+      showToast("❌ 올바른 주소를 입력해주세요")
       return
     }
 
+    // 3. 목록에 추가
     const newLinkItem: LinkItem = {
       id: `link-${Date.now()}`,
       title,
