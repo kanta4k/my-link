@@ -273,7 +273,7 @@ export default function Page() {
       <div className="flex min-h-svh items-center justify-center bg-zinc-950 text-white">
         <div className="flex flex-col items-center gap-4">
           <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-r-2 border-fuchsia-500" />
-          <p className="text-sm font-medium tracking-widest text-zinc-400">LOADING MYLINK...</p>
+          <p className="text-xs font-bold tracking-widest text-zinc-400">마이링크를 불러오는 중...</p>
         </div>
       </div>
     )
@@ -417,7 +417,7 @@ export default function Page() {
         <footer className="mt-8 text-center text-[11px] text-zinc-500/85 select-none flex flex-col items-center gap-2">
           <div className="flex items-center gap-1.5">
             <span className="h-1.5 w-1.5 rounded-full bg-zinc-500 animate-ping" />
-            <p>Designed with High Aesthetics & Glassmorphism</p>
+            <p>고품격 글래스모피즘 디자인으로 제작되었습니다</p>
           </div>
           <p>© {new Date().getFullYear()} My Link. All rights reserved.</p>
         </footer>

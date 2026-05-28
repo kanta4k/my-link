@@ -519,7 +519,7 @@ export default function MyPage() {
       <div className="flex min-h-svh items-center justify-center bg-zinc-950 text-white">
         <div className="flex flex-col items-center gap-4">
           <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-r-2 border-fuchsia-500" />
-          <p className="text-sm font-medium tracking-widest text-zinc-400">LOADING MYPAGE...</p>
+          <p className="text-xs font-bold tracking-widest text-zinc-400">관리 센터를 불러오는 중...</p>
         </div>
       </div>
     )
