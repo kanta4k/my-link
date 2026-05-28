@@ -4,7 +4,8 @@ import React, { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { 
   Sparkles, Plus, Trash2, ArrowLeft, Eye, Link2, 
-  User, FileText, BadgePlus, HelpCircle, Save, Check
+  User, FileText, BadgePlus, HelpCircle, RotateCcw, 
+  LayoutTemplate, AlertTriangle, Globe, Mail, Save, Edit3, Check
 } from "lucide-react"
 import { dummyLinks, dummySocials, defaultTags, getFaviconUrl, LinkItem, SocialItem } from "@/Data/links"
 import { Card } from "@/components/ui/card"
@@ -27,7 +28,7 @@ interface ThemePreset {
   isDark: boolean;
 }
 
-// 메인 페이지와 동일한 5가지 프리미엄 컬러 프리셋 테마
+// 5가지 프리미엄 컬러 프리셋 테마
 const themePresets: ThemePreset[] = [
   {
     id: "cyberpunk",
@@ -119,6 +120,7 @@ export default function MyPage() {
   })
   
   const [links, setLinks] = useState<LinkItem[]>([])
+  const [socials, setSocials] = useState<SocialItem[]>([])
   const [tags, setTags] = useState<string[]>([])
 
   // 다이얼로그 모달 제어 상태
@@ -132,6 +134,10 @@ export default function MyPage() {
   const [newTag, setNewTag] = useState("")
   const [isAddingTag, setIsAddingTag] = useState(false)
 
+  // 소셜 미디어 플랫폼 개별 수정 상태
+  const [editingSocialPlatform, setEditingSocialPlatform] = useState<string | null>(null)
+  const [tempSocialUrl, setTempSocialUrl] = useState("")
+
   // 알림 메시지 피드백 상태
   const [toastMessage, setToastMessage] = useState<string | null>(null)
 
@@ -141,6 +147,7 @@ export default function MyPage() {
 
     const savedProfile = localStorage.getItem("mylink_profile")
     const savedLinks = localStorage.getItem("mylink_links")
+    const savedSocials = localStorage.getItem("mylink_socials")
     const savedTags = localStorage.getItem("mylink_tags")
     const savedThemeId = localStorage.getItem("mylink_theme_id")
 
@@ -150,6 +157,12 @@ export default function MyPage() {
       setLinks(JSON.parse(savedLinks))
     } else {
       setLinks(dummyLinks)
+    }
+
+    if (savedSocials) {
+      setSocials(JSON.parse(savedSocials))
+    } else {
+      setSocials(dummySocials)
     }
 
     if (savedTags) {
@@ -167,10 +180,18 @@ export default function MyPage() {
   const activePreset = themePresets.find(p => p.id === activeThemeId) || themePresets[0]
 
   // 데이터 통합 저장 유틸리티
-  const saveAllToLocal = (updatedProfile = profile, updatedLinks = links, updatedTags = tags) => {
+  const saveAllToLocal = (
+    updatedProfile = profile, 
+    updatedLinks = links, 
+    updatedSocials = socials, 
+    updatedTags = tags,
+    themeId = activeThemeId
+  ) => {
     localStorage.setItem("mylink_profile", JSON.stringify(updatedProfile))
     localStorage.setItem("mylink_links", JSON.stringify(updatedLinks))
+    localStorage.setItem("mylink_socials", JSON.stringify(updatedSocials))
     localStorage.setItem("mylink_tags", JSON.stringify(updatedTags))
+    localStorage.setItem("mylink_theme_id", themeId)
   }
 
   // 알림 피드백 노출 유틸리티
@@ -201,7 +222,7 @@ export default function MyPage() {
 
     const updated = [...tags, val]
     setTags(updated)
-    saveAllToLocal(profile, links, updated)
+    saveAllToLocal(profile, links, socials, updated)
     setNewTag("")
     setIsAddingTag(false)
     showToast("🏷️ 관심 스택이 프로필에 반영되었습니다.")
@@ -211,8 +232,44 @@ export default function MyPage() {
   const handleDeleteTag = (targetTag: string) => {
     const updated = tags.filter(t => t !== targetTag)
     setTags(updated)
-    saveAllToLocal(profile, links, updated)
+    saveAllToLocal(profile, links, socials, updated)
     showToast("🗑️ 태그가 삭제되었습니다.")
+  }
+
+  // 테마 프리셋 실시간 변경
+  const handleThemePresetChange = (themeId: string) => {
+    setActiveThemeId(themeId)
+    localStorage.setItem("mylink_theme_id", themeId)
+    showToast(`🎨 테마 프리셋이 '${themePresets.find(t=>t.id===themeId)?.name}'(으)로 변경되었습니다!`)
+  }
+
+  // 소셜 미디어 링크 편집 개시
+  const startEditingSocial = (platform: string, currentUrl: string) => {
+    setEditingSocialPlatform(platform)
+    setTempSocialUrl(currentUrl)
+  }
+
+  // 소셜 미디어 링크 저장
+  const saveSocialLink = () => {
+    if (!editingSocialPlatform) return
+    let finalUrl = tempSocialUrl.trim()
+
+    if (finalUrl && !/^https?:\/\//i.test(finalUrl) && editingSocialPlatform !== 'email') {
+      finalUrl = "https://" + finalUrl
+    }
+
+    const updated = socials.map(item => {
+      if (item.platform === editingSocialPlatform) {
+        return { ...item, url: finalUrl }
+      }
+      return item
+    })
+
+    setSocials(updated)
+    saveAllToLocal(profile, links, updated)
+    setEditingSocialPlatform(null)
+    setTempSocialUrl("")
+    showToast(`🔗 ${editingSocialPlatform.toUpperCase()} 주소가 업데이트되었습니다.`)
   }
 
   // 다이얼로그 열기
@@ -259,6 +316,72 @@ export default function MyPage() {
     showToast("🗑️ 링크 카드가 목록에서 삭제되었습니다.")
   }
 
+  // 전체 데이터 데모 상태로 초기화 (Danger Zone)
+  const handleResetToDemo = () => {
+    if (confirm("🚨 경고: 정말 모든 데이터를 데모 초기값으로 복구하시겠습니까?\n현재 브라우저에 임시 저장된 모든 프로필 및 링크 카드 수정 이력이 초기화됩니다.")) {
+      const defaultProfile = {
+        displayName: "정운학 (Unhak Jeong)",
+        bio: "🚀 마이링크 프론트엔드 리디자인 연구원 | 멋진 인터랙션과 최상의 UX를 설계하는 제품 지향적 개발자입니다. React, Next.js, Rust에 푹 빠져있습니다.",
+        avatarInitials: "JU"
+      }
+
+      setProfile(defaultProfile)
+      setLinks(dummyLinks)
+      setSocials(dummySocials)
+      setTags(defaultTags)
+      setActiveThemeId("cyberpunk")
+
+      saveAllToLocal(defaultProfile, dummyLinks, dummySocials, defaultTags, "cyberpunk")
+      showToast("🔄 데이터가 데모 기본값으로 완벽하게 초기화되었습니다.")
+    }
+  }
+
+  // 소셜 아이콘 SVG 렌더링
+  const renderSocialIcon = (platform: string, className = "h-4 w-4") => {
+    switch (platform) {
+      case 'github': 
+        return (
+          <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4" />
+            <path d="M9 18c-4.51 2-5-2-7-2" />
+          </svg>
+        );
+      case 'linkedin': 
+        return (
+          <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z" />
+            <rect width="4" height="12" x="2" y="9" />
+            <circle cx="4" cy="4" r="2" />
+          </svg>
+        );
+      case 'twitter': 
+        return (
+          <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M22 4s-.7 2.1-2 3.4c1.6 10-9.4 17.3-18 11.6 2.2.1 4.4-.6 6-2C3 15.5.5 9.6 3 5c2.2 2.6 5.6 4.1 9 4-.9-4.2 4-6.6 7-3.8 1.1 0 3-1.2 3-1.2z" />
+          </svg>
+        );
+      case 'youtube': 
+        return (
+          <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M2.5 17a24.12 24.12 0 0 1 0-10 2 2 0 0 1 1.4-1.4 49.56 49.56 0 0 1 16.2 0A2 2 0 0 1 21.5 7a24.12 24.12 0 0 1 0 10 2 2 0 0 1-1.4 1.4 49.55 49.55 0 0 1-16.2 0A2 2 0 0 1 2.5 17z" />
+            <polygon points="10 15 15 12 10 9" fill="currentColor" />
+          </svg>
+        );
+      case 'instagram': 
+        return (
+          <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect width="20" height="20" x="2" y="2" rx="5" ry="5" />
+            <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+            <line x1="17.5" x2="17.51" y1="6.5" y2="6.5" />
+          </svg>
+        );
+      case 'email':
+        return <Mail className={className} />;
+      default:
+        return <Globe className={className} />;
+    }
+  }
+
   if (!mounted) {
     return (
       <div className="flex min-h-svh items-center justify-center bg-zinc-950 text-white">
@@ -295,7 +418,7 @@ export default function MyPage() {
             className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-zinc-300 hover:text-white rounded-xl transition-all hover:bg-white/5 cursor-pointer"
           >
             <ArrowLeft className="h-4 w-4" />
-            <span>메인 시뮬레이터</span>
+            <span>메인 페이지로 이동</span>
           </button>
           
           <button
@@ -311,24 +434,57 @@ export default function MyPage() {
         <section className="flex flex-col gap-1.5 text-left pl-1">
           <h1 className="text-xl sm:text-2xl font-black bg-gradient-to-r from-white via-zinc-100 to-zinc-400 bg-clip-text text-transparent flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-amber-400" />
-            마이링크 프로필 및 링크 관리자
+            마이링크 관리 센터
           </h1>
           <p className="text-xs text-zinc-400 leading-relaxed">
-            나를 표현하는 고유 닉네임 페이지의 정보와 링크 목록을 실시간으로 관리할 수 있습니다. 로컬 데이터 연동 상태입니다.
+            비주얼 테마, 프로필, 링크 카드 및 하단 소셜 미디어 연동까지 마이링크의 모든 설정을 이곳에서 완벽히 통합 제어합니다.
           </p>
         </section>
 
-        {/* CARD 1: 프로필 정보 편집 */}
+        {/* CARD 1: 마이링크 테마 프리셋 설정 (이전 탑재) */}
+        <Card className={`p-5 backdrop-blur-xl border flex flex-col gap-4.5 ${activePreset.cardClass}`}>
+          <div className="flex items-center gap-2 border-b border-white/10 pb-3">
+            <LayoutTemplate className={`h-4.5 w-4.5 ${activePreset.primaryText}`} />
+            <h2 className="text-sm font-bold text-white tracking-wide">내 브랜드 비주얼 테마 설정</h2>
+          </div>
+
+          <div className="flex flex-col gap-2 text-left">
+            <p className="text-[11px] text-zinc-400">
+              PRD V2 제안 사항: 내 퍼블릭 링크 페이지에 적용될 5가지 프리미엄 그래디언트 테마 프리셋입니다.
+            </p>
+            
+            <div className="flex flex-wrap gap-2.5 mt-2">
+              {themePresets.map((preset) => {
+                const isActive = preset.id === activeThemeId
+                return (
+                  <button
+                    key={preset.id}
+                    onClick={() => handleThemePresetChange(preset.id)}
+                    className={`px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 cursor-pointer ${
+                      isActive 
+                        ? `${preset.primaryBg} text-white scale-[1.03] shadow-lg`
+                        : "bg-zinc-950/70 border border-white/5 hover:bg-white/5 hover:border-white/10 text-zinc-300"
+                    }`}
+                  >
+                    {preset.name}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </Card>
+
+        {/* CARD 2: 프로필 정보 편집 */}
         <Card className={`p-5 backdrop-blur-xl border flex flex-col gap-5 ${activePreset.cardClass}`}>
           <div className="flex items-center gap-2 border-b border-white/10 pb-3">
             <User className={`h-4.5 w-4.5 ${activePreset.primaryText}`} />
             <h2 className="text-sm font-bold text-white tracking-wide">프로필 정보 편집</h2>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-4 items-start">
+          <div className="flex flex-col sm:flex-row gap-4 items-start text-left">
             {/* 아바타 이니셜 입력란 */}
             <div className="flex flex-col gap-1.5 w-full sm:w-20">
-              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">아바타</label>
+              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest pl-0.5">아바타</label>
               <input
                 type="text"
                 maxLength={2}
@@ -341,7 +497,7 @@ export default function MyPage() {
 
             {/* 표시 이름(displayName) 입력란 */}
             <div className="flex flex-col gap-1.5 flex-grow w-full">
-              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">표시 이름</label>
+              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest pl-0.5">표시 이름</label>
               <input
                 type="text"
                 value={profile.displayName}
@@ -353,8 +509,8 @@ export default function MyPage() {
           </div>
 
           {/* 단문 소개(bio) 입력란 */}
-          <div className="flex flex-col gap-1.5 w-full">
-            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">단문 자기소개 (Bio)</label>
+          <div className="flex flex-col gap-1.5 w-full text-left">
+            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest pl-0.5">단문 자기소개 (Bio)</label>
             <textarea
               value={profile.bio}
               onChange={(e) => handleProfileFieldChange("bio", e.target.value)}
@@ -365,8 +521,8 @@ export default function MyPage() {
           </div>
 
           {/* 스택 태그 관리 */}
-          <div className="flex flex-col gap-2 w-full pt-1">
-            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest flex items-center justify-between">
+          <div className="flex flex-col gap-2 w-full pt-1 text-left">
+            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest flex items-center justify-between pl-0.5">
               <span>관심 분야 / 스택 태그</span>
               <span className="text-[9px] text-zinc-500 font-normal">태그 삭제 시 우측 × 클릭</span>
             </label>
@@ -376,7 +532,7 @@ export default function MyPage() {
               {tags.map((tag) => (
                 <span 
                   key={tag} 
-                  className={`text-[9px] py-1 px-2 rounded-full font-bold select-none flex items-center gap-1 transition-transform hover:scale-[1.02] ${activePreset.tagBg}`}
+                  className={`text-[9px] py-1 px-2.5 rounded-full font-bold select-none flex items-center gap-1 transition-transform hover:scale-[1.02] ${activePreset.tagBg}`}
                 >
                   #{tag}
                   <button 
@@ -432,7 +588,7 @@ export default function MyPage() {
           </div>
         </Card>
 
-        {/* CARD 2: 연결 링크 목록 관리 */}
+        {/* CARD 3: 연결 링크 목록 관리 */}
         <Card className={`p-5 backdrop-blur-xl border flex flex-col gap-4 ${activePreset.cardClass}`}>
           <div className="flex items-center justify-between border-b border-white/10 pb-3">
             <div className="flex items-center gap-2">
@@ -458,7 +614,7 @@ export default function MyPage() {
               return (
                 <div 
                   key={link.id}
-                  className="flex items-center justify-between p-3.5 rounded-2xl bg-zinc-950/40 border border-white/5 hover:border-white/10 transition-all duration-200 group"
+                  className="flex items-center justify-between p-3.5 rounded-2xl bg-zinc-950/40 border border-white/5 hover:border-white/10 transition-all duration-200 group text-left"
                 >
                   <div className="flex items-center gap-3 overflow-hidden text-left">
                     {/* 파비콘 */}
@@ -522,20 +678,108 @@ export default function MyPage() {
           </div>
         </Card>
 
-        {/* 안내 팁 박스 */}
-        <section className="p-4 bg-zinc-950/45 border border-white/5 rounded-2xl flex items-start gap-2.5 pl-4 text-left">
-          <span className="flex h-5 w-5 items-center justify-center rounded bg-amber-500/15 text-amber-400 text-[10px] font-black border border-amber-500/30 flex-shrink-0 mt-0.5">TIP</span>
-          <div>
-            <h5 className="text-[11px] font-bold text-zinc-200">데이터 실시간 반영 안내</h5>
-            <p className="text-[10px] text-zinc-500 leading-relaxed mt-1">
-              여기서 변경된 사항은 브라우저 공통 로컬 스토리지에 동기화되므로, 상단의 &apos;내 마이링크 보러가기&apos; 버튼으로 이동하시면 실제 디자인 뷰(방문자 모드)에서 즉시 반영된 것을 보실 수 있습니다.
-            </p>
+        {/* CARD 4: 하단 소셜 독(Social Dock) 주소 편집 */}
+        <Card className={`p-5 backdrop-blur-xl border flex flex-col gap-4 ${activePreset.cardClass}`}>
+          <div className="flex items-center gap-2 border-b border-white/10 pb-3">
+            <Globe className={`h-4.5 w-4.5 ${activePreset.primaryText}`} />
+            <h2 className="text-sm font-bold text-white tracking-wide">하단 소셜 미디어 주소 설정</h2>
           </div>
-        </section>
+
+          <p className="text-[11px] text-zinc-400 text-left">
+            메인 페이지 최하단에 정렬되는 툴팁형 소셜 아이콘 바의 연결 경로를 직접 지정합니다.
+          </p>
+
+          <div className="flex flex-col gap-2.5 mt-1 text-left">
+            {socials.map((social) => {
+              const isEditing = editingSocialPlatform === social.platform
+
+              return (
+                <div 
+                  key={social.id}
+                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-zinc-950/40 rounded-2xl border border-white/5 hover:border-white/10 transition-colors"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/5 border border-white/5 text-zinc-300">
+                      {renderSocialIcon(social.platform)}
+                    </span>
+                    <span className="text-xs font-black text-zinc-200 capitalize w-16">{social.platform}</span>
+                  </div>
+
+                  <div className="flex-grow flex items-center gap-2 w-full sm:w-auto">
+                    {isEditing ? (
+                      <div className="flex gap-2 w-full">
+                        <input
+                          type="text"
+                          value={tempSocialUrl}
+                          onChange={(e) => setTempSocialUrl(e.target.value)}
+                          placeholder={social.platform === 'email' ? "unhak@example.com" : "URL 주소를 적어주세요."}
+                          className="flex-grow bg-zinc-950 border border-white/15 rounded-xl px-3 py-1.5 text-xs text-white outline-none focus:border-emerald-400"
+                          autoFocus
+                        />
+                        <button
+                          onClick={saveSocialLink}
+                          className="p-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-black cursor-pointer"
+                          title="주소 저장"
+                        >
+                          <Check className="h-3 w-3" />
+                        </button>
+                        <button
+                          onClick={() => setEditingSocialPlatform(null)}
+                          className="px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400 text-xs font-semibold cursor-pointer"
+                        >
+                          취소
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <span className="text-[10px] text-zinc-500 font-medium truncate max-w-[160px] sm:max-w-[200px] flex-grow text-right pr-2">
+                          {social.url ? social.url : "(미설정)"}
+                        </span>
+                        <button
+                          onClick={() => startEditingSocial(social.platform, social.url)}
+                          className="flex items-center gap-1 py-1 px-2.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 text-[10px] font-bold text-zinc-300 hover:text-white cursor-pointer"
+                        >
+                          <Edit3 className="h-3 w-3" />
+                          <span>주소 수정</span>
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </Card>
+
+        {/* CARD 5: DANGER ZONE (위험 구역) - 데모 복구 카드 신설 */}
+        <Card className="p-5 backdrop-blur-xl border border-red-500/20 bg-red-950/10 flex flex-col gap-4">
+          <div className="flex items-center gap-2 border-b border-red-500/15 pb-3">
+            <AlertTriangle className="h-4.5 w-4.5 text-red-400 animate-pulse" />
+            <h2 className="text-sm font-bold text-red-200 tracking-wide">Danger Zone (위험 구역)</h2>
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-left">
+            <div>
+              <h4 className="text-xs font-black text-zinc-200">데모 데이터 전체 복구 및 리셋</h4>
+              <p className="text-[10px] text-zinc-500 leading-relaxed mt-1">
+                작업 및 수정하시던 브라우저 내부의 모든 로컬 스토리지 데이터를 초기 데모 프리셋 정보로 완전 리셋합니다.
+              </p>
+            </div>
+            
+            <button
+              onClick={handleResetToDemo}
+              className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-black bg-red-500/15 hover:bg-red-500/25 border border-red-500/35 text-red-400 transition-all cursor-pointer flex-shrink-0"
+              title="데이터 전체 초기 데모 프리셋으로 리셋"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              <span>데이터 복구 초기화</span>
+            </button>
+          </div>
+        </Card>
 
         {/* 푸터 */}
         <footer className="text-center text-[10px] text-zinc-500 select-none">
-          <p>© {new Date().getFullYear()} My Link Dashboard. Made with High Aesthetics.</p>
+          <p>© {new Date().getFullYear()} My Link Center. Design System Integrated.</p>
         </footer>
       </div>
 

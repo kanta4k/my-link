@@ -1,15 +1,13 @@
 "use client"
 
-import React, { useEffect, useState, useRef } from "react"
+import React, { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useTheme } from "next-themes"
 import { 
-  Sun, Moon, ExternalLink, Sparkles, Edit3, Check, Plus, Trash2, 
-  Globe, Mail, RotateCcw, Info, User, Eye, EyeOff, LayoutTemplate,
-  Settings, ArrowRight
+  ExternalLink, Sparkles, Settings, Globe, Mail, 
+  ArrowRight, LayoutTemplate
 } from "lucide-react"
 import { dummyLinks, dummySocials, defaultTags, getFaviconUrl, LinkItem, SocialItem } from "@/Data/links"
-import { Card } from "@/components/ui/card"
 
 // 테마 프리셋 인터페이스 정의
 interface ThemePreset {
@@ -109,11 +107,9 @@ const themePresets: ThemePreset[] = [
 
 export default function Page() {
   const router = useRouter()
-  const { theme, setTheme } = useTheme()
+  const { setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
-
-  // 1. 핵심 클라이언트 관리 상태 정의
-  const [isAdminMode, setIsAdminMode] = useState<boolean>(false)
+  
   const [activeThemeId, setActiveThemeId] = useState<string>("cyberpunk")
   
   // 프로필 정보 상태
@@ -123,52 +119,20 @@ export default function Page() {
     avatarInitials: "JU"
   })
 
-  // 링크 목록 상태
+  // 데이터 목록 상태들
   const [links, setLinks] = useState<LinkItem[]>([])
-  // 소셜 목록 상태
   const [socials, setSocials] = useState<SocialItem[]>([])
-  // 태그 리스트 상태
   const [tags, setTags] = useState<string[]>([])
-
-  // 2. 인라인 편집용 식별 상태
-  const [editingLinkId, setEditingLinkId] = useState<string | null>(null)
-  const [editingField, setEditingField] = useState<"title" | "url" | null>(null)
-  const [tempEditValue, setTempEditValue] = useState<string>("")
-
-  // 프로필 편집 상태
-  const [isEditingProfileName, setIsEditingProfileName] = useState(false)
-  const [isEditingProfileBio, setIsEditingProfileBio] = useState(false)
-  const [isEditingAvatar, setIsEditingAvatar] = useState(false)
-  const [tempProfileName, setTempProfileName] = useState("")
-  const [tempProfileBio, setTempProfileBio] = useState("")
-  const [tempAvatar, setTempAvatar] = useState("")
-
-  // 신규 링크 입력 폼 상태
-  const [newTitle, setNewTitle] = useState("")
-  const [newUrl, setNewUrl] = useState("")
-  const [isAddingLink, setIsAddingLink] = useState(false)
-
-  // 신규 태그 입력 상태
-  const [newTag, setNewTag] = useState("")
-  const [isAddingTag, setIsAddingTag] = useState(false)
-
-  // 알림 메시지 상태
-  const [toastMessage, setToastMessage] = useState<string | null>(null)
-
-  // input 포커스 제어용 refs
-  const editInputRef = useRef<HTMLInputElement>(null)
 
   // Hydration mismatch 방지 및 로컬스토리지 로딩
   useEffect(() => {
     setMounted(true)
     
-    // 로컬스토리지 복구
     const savedProfile = localStorage.getItem("mylink_profile")
     const savedLinks = localStorage.getItem("mylink_links")
     const savedSocials = localStorage.getItem("mylink_socials")
     const savedTags = localStorage.getItem("mylink_tags")
     const savedThemeId = localStorage.getItem("mylink_theme_id")
-    const savedAdmin = localStorage.getItem("mylink_admin_mode")
 
     if (savedProfile) setProfile(JSON.parse(savedProfile))
     
@@ -193,20 +157,14 @@ export default function Page() {
     if (savedThemeId) {
       setActiveThemeId(savedThemeId)
     }
-
-    if (savedAdmin) {
-      setIsAdminMode(JSON.parse(savedAdmin))
-    }
   }, [])
 
   // 활성 프리셋 정보 로드
   const activePreset = themePresets.find(p => p.id === activeThemeId) || themePresets[0]
 
-  // 테마 프리셋 선택시 next-themes 다크/라이트 모드와 자동 Sync
+  // 테마 동기화 처리
   useEffect(() => {
     if (!mounted) return
-    localStorage.setItem("mylink_theme_id", activeThemeId)
-    
     if (activePreset.isDark) {
       setTheme("dark")
     } else {
@@ -214,223 +172,7 @@ export default function Page() {
     }
   }, [activeThemeId, activePreset, setTheme, mounted])
 
-  // 자동 데이터 영속화 저장 함수
-  const saveAllToLocal = (updatedProfile = profile, updatedLinks = links, updatedSocials = socials, updatedTags = tags) => {
-    localStorage.setItem("mylink_profile", JSON.stringify(updatedProfile))
-    localStorage.setItem("mylink_links", JSON.stringify(updatedLinks))
-    localStorage.setItem("mylink_socials", JSON.stringify(updatedSocials))
-    localStorage.setItem("mylink_tags", JSON.stringify(updatedTags))
-  }
-
-  // 알림 토스트 유틸
-  const showToast = (message: string) => {
-    setToastMessage(message)
-    setTimeout(() => {
-      setToastMessage(null)
-    }, 2800)
-  }
-
-  // 1. [초기화] 복구 기능 구현
-  const handleResetData = () => {
-    if (confirm("모든 데이터를 초기 상태로 복구하시겠습니까? (로컬 브라우저 변경 이력도 초기화됩니다)")) {
-      setProfile({
-        displayName: "정운학 (Unhak Jeong)",
-        bio: "🚀 마이링크 프론트엔드 리디자인 연구원 | 멋진 인터랙션과 최상의 UX를 설계하는 제품 지향적 개발자입니다. React, Next.js, Rust에 푹 빠져있습니다.",
-        avatarInitials: "JU"
-      })
-      setLinks(dummyLinks)
-      setSocials(dummySocials)
-      setTags(defaultTags)
-      setActiveThemeId("cyberpunk")
-      
-      localStorage.removeItem("mylink_profile")
-      localStorage.removeItem("mylink_links")
-      localStorage.removeItem("mylink_socials")
-      localStorage.removeItem("mylink_tags")
-      localStorage.removeItem("mylink_theme_id")
-      
-      showToast("데이터가 데모 초기 프리셋으로 재설정되었습니다.")
-    }
-  }
-
-  // 2. [어드민 모드] 스위칭 제어
-  const toggleAdminMode = () => {
-    const nextMode = !isAdminMode
-    setIsAdminMode(nextMode)
-    localStorage.setItem("mylink_admin_mode", JSON.stringify(nextMode))
-    
-    // 편집 상태 초기화
-    setEditingLinkId(null)
-    setEditingField(null)
-    setIsEditingProfileName(false)
-    setIsEditingProfileBio(false)
-    setIsEditingAvatar(false)
-    
-    showToast(nextMode ? "🛠️ 관리자 데모 모드가 켜졌습니다. 필드를 클릭해 인라인 수정해보세요!" : "👀 방문자 모드로 전환되었습니다. 프리미엄 완성 화면입니다.")
-  }
-
-  // 3. [인라인 링크 편집] 시작
-  const startEditingLink = (id: string, field: "title" | "url", currentVal: string) => {
-    if (!isAdminMode) return // 어드민 모드에서만 편집 가능
-    setEditingLinkId(id)
-    setEditingField(field)
-    setTempEditValue(currentVal)
-    
-    // 자동 포커싱을 위한 타이밍 지연
-    setTimeout(() => {
-      editInputRef.current?.focus()
-      editInputRef.current?.select()
-    }, 50)
-  }
-
-  // [인라인 링크 편집] 저장
-  const saveLinkEditing = () => {
-    if (!editingLinkId || !editingField) return
-
-    let finalVal = tempEditValue.trim()
-
-    // URL 필드 수정 중인 경우 자동 프로토콜(http) 보완
-    if (editingField === "url" && finalVal) {
-      if (!/^https?:\/\//i.test(finalVal)) {
-        finalVal = "https://" + finalVal
-      }
-    }
-
-    if (!finalVal) {
-      showToast("❌ 입력값을 공백으로 둘 수 없습니다.")
-      cancelLinkEditing()
-      return
-    }
-
-    const updatedLinks = links.map(link => {
-      if (link.id === editingLinkId) {
-        return { ...link, [editingField]: finalVal }
-      }
-      return link
-    })
-
-    setLinks(updatedLinks)
-    saveAllToLocal(profile, updatedLinks)
-    cancelLinkEditing()
-    showToast("💾 링크 정보가 인라인으로 저장되었습니다.")
-  }
-
-  const cancelLinkEditing = () => {
-    setEditingLinkId(null)
-    setEditingField(null)
-    setTempEditValue("")
-  }
-
-  // 4. [프로필 이름 및 Bio 인라인 편집]
-  const saveProfileName = () => {
-    const val = tempProfileName.trim()
-    if (!val) {
-      setIsEditingProfileName(false)
-      return
-    }
-    const updated = { ...profile, displayName: val }
-    setProfile(updated)
-    saveAllToLocal(updated)
-    setIsEditingProfileName(false)
-    showToast("👤 프로필 이름이 업데이트되었습니다.")
-  }
-
-  const saveProfileBio = () => {
-    const val = tempProfileBio.trim()
-    if (!val) {
-      setIsEditingProfileBio(false)
-      return
-    }
-    const updated = { ...profile, bio: val }
-    setProfile(updated)
-    saveAllToLocal(updated)
-    setIsEditingProfileBio(false)
-    showToast("📝 자기소개가 업데이트되었습니다.")
-  }
-
-  const saveAvatarInitials = () => {
-    const val = tempAvatar.trim().substring(0, 2).toUpperCase()
-    if (!val) {
-      setIsEditingAvatar(false)
-      return
-    }
-    const updated = { ...profile, avatarInitials: val }
-    setProfile(updated)
-    saveAllToLocal(updated)
-    setIsEditingAvatar(false)
-    showToast("🖼️ 아바타 이니셜이 업데이트되었습니다.")
-  }
-
-  // 5. [링크 생성 (CRUD)]
-  const handleAddLink = (e: React.FormEvent) => {
-    e.preventDefault()
-    const title = newTitle.trim()
-    let url = newUrl.trim()
-
-    if (!title || !url) {
-      showToast("❌ 제목과 주소를 모두 입력해주세요.")
-      return
-    }
-
-    if (!/^https?:\/\//i.test(url)) {
-      url = "https://" + url
-    }
-
-    const newLinkItem: LinkItem = {
-      id: `link-${Date.now()}`,
-      title,
-      url
-    }
-
-    const updated = [...links, newLinkItem]
-    setLinks(updated)
-    saveAllToLocal(profile, updated)
-    
-    // 입력 폼 클리어
-    setNewTitle("")
-    setNewUrl("")
-    setIsAddingLink(false)
-    showToast("🎉 새로운 링크 카드가 성공적으로 추가되었습니다!")
-  }
-
-  // 6. [링크 삭제 (CRUD)]
-  const handleDeleteLink = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation() // 클릭 이벤트 차단
-    e.preventDefault()
-    
-    const updated = links.filter(link => link.id !== id)
-    setLinks(updated)
-    saveAllToLocal(profile, updated)
-    showToast("🗑️ 링크 카드가 삭제되었습니다.")
-  }
-
-  // 7. [태그 배지 추가 / 삭제]
-  const handleAddTag = (e: React.FormEvent) => {
-    e.preventDefault()
-    const val = newTag.trim()
-    if (!val) return
-
-    if (tags.includes(val)) {
-      showToast("⚠️ 이미 존재하는 태그명입니다.")
-      return
-    }
-
-    const updated = [...tags, val]
-    setTags(updated)
-    saveAllToLocal(profile, links, socials, updated)
-    setNewTag("")
-    setIsAddingTag(false)
-    showToast("🏷️ 새 관심사 태그가 추가되었습니다.")
-  }
-
-  const handleDeleteTag = (targetTag: string) => {
-    const updated = tags.filter(t => t !== targetTag)
-    setTags(updated)
-    saveAllToLocal(profile, links, socials, updated)
-    showToast("🏷️ 태그가 삭제되었습니다.")
-  }
-
-  // 소셜 위젯 플랫폼 아이콘 매퍼 (인라인 SVG 렌더링을 통한 외부 라이브러리 타입 세이프성 확보)
+  // 소셜 위젯 플랫폼 아이콘 매퍼
   const renderSocialIcon = (platform: string, className = "h-5 w-5") => {
     switch (platform) {
       case 'github': 
@@ -488,110 +230,26 @@ export default function Page() {
   }
 
   return (
-    <main className={`relative flex min-h-svh w-full flex-col items-center justify-start overflow-x-hidden p-4 pb-28 pt-8 sm:pt-16 transition-all duration-700 ease-in-out ${activePreset.bgClass}`}>
+    <main className={`relative flex min-h-svh w-full flex-col items-center justify-start overflow-x-hidden p-4 pb-28 pt-12 sm:pt-20 transition-all duration-700 ease-in-out ${activePreset.bgClass}`}>
       
-      {/* 1. 상단 장식 오라 백라이트 효과 */}
+      {/* 1. 세련된 비침해적 플로팅 관리 페이지 기어 버튼 */}
+      <div className="fixed top-6 right-6 z-50 flex items-center group">
+        <button
+          onClick={() => router.push("/mypage")}
+          className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-zinc-900/60 text-zinc-300 shadow-xl backdrop-blur-xl transition-all duration-300 hover:scale-105 hover:border-emerald-500/40 hover:text-emerald-400 cursor-pointer"
+          title="관리자 설정 페이지 이동"
+        >
+          <Settings className="h-5 w-5 transition-transform duration-500 group-hover:rotate-45" />
+        </button>
+        {/* 호버 시 툴팁 슬라이딩 */}
+        <span className="pointer-events-none absolute right-14 scale-0 rounded-lg border border-white/5 bg-zinc-950 px-2.5 py-1 text-[10px] font-bold tracking-wider text-white shadow-2xl backdrop-blur-md transition-all duration-200 group-hover:scale-100 whitespace-nowrap">
+          관리 페이지 이동
+        </span>
+      </div>
+
+      {/* 2. 상단 장식 오라 백라이트 효과 */}
       <div className={`pointer-events-none absolute top-0 left-1/4 -z-10 h-96 w-96 rounded-full bg-gradient-to-b ${activePreset.auraClass1} blur-3xl`} />
       <div className={`pointer-events-none absolute top-40 right-1/4 -z-10 h-[500px] w-[500px] rounded-full bg-gradient-to-b ${activePreset.auraClass2} blur-3xl`} />
-
-      {/* 2. 최상단 통합 제어 패널 (Admin 및 테마 프리셋 관리) */}
-      <section className="w-full max-w-xl mb-12 animate-fade-in">
-        <div className="rounded-2xl bg-white/5 border border-white/10 dark:bg-black/25 dark:border-white/5 p-4 sm:p-5 backdrop-blur-xl shadow-2xl flex flex-col gap-4">
-          
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-white/10 pb-4">
-            {/* 프로젝트 타이틀 / 설명 */}
-            <div className="flex items-center gap-2.5">
-              <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${activePreset.primaryBg} text-white shadow-lg`}>
-                <Sparkles className="h-4 w-4 animate-pulse" />
-              </span>
-              <div>
-                <h3 className="text-sm font-bold tracking-tight text-white dark:text-zinc-100 flex items-center gap-1.5">
-                  마이링크 시뮬레이터 
-                  <span className="text-[10px] py-0.5 px-1.5 rounded-full bg-emerald-500/20 text-emerald-400 font-semibold border border-emerald-500/30">Active</span>
-                </h3>
-                <p className="text-[11px] text-zinc-400">MVP 스펙 인라인 편집 및 PRD v2 프리셋 체험</p>
-              </div>
-            </div>
-
-            {/* 어드민 모드 & 마이페이지 바로가기 & 리셋 버튼 */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={toggleAdminMode}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all duration-300 shadow-md border ${
-                  isAdminMode 
-                    ? "bg-amber-500/25 text-amber-300 border-amber-500/40 animate-pulse hover:bg-amber-500/35"
-                    : "bg-white/10 hover:bg-white/20 text-zinc-200 border-white/10"
-                }`}
-                aria-label="어드민 에뮬레이터 모드 변경"
-              >
-                {isAdminMode ? (
-                  <>
-                    <Eye className="h-3.5 w-3.5" />
-                    <span>편집 중 (Admin)</span>
-                  </>
-                ) : (
-                  <>
-                    <Edit3 className="h-3.5 w-3.5" />
-                    <span>관리자 시뮬레이터</span>
-                  </>
-                )}
-              </button>
-
-              <button
-                onClick={() => router.push("/mypage")}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-gradient-to-r from-emerald-500 to-teal-500 text-white transition-all duration-300 hover:brightness-110 shadow-md cursor-pointer"
-                title="전용 관리 페이지(/mypage)로 이동"
-              >
-                <Settings className="h-3.5 w-3.5" />
-                <span>관리 페이지</span>
-                <ArrowRight className="h-3 w-3" />
-              </button>
-
-              <button
-                onClick={handleResetData}
-                className="flex items-center justify-center p-2 rounded-full bg-white/5 border border-white/5 text-zinc-400 hover:text-white hover:bg-white/10 transition-all duration-200"
-                title="시뮬레이터 데이터 전체 초기화"
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
-
-          {/* 테마 프리셋 선택 칩 */}
-          <div className="flex flex-col gap-2">
-            <label className="text-[10px] font-bold text-zinc-400 tracking-wider flex items-center gap-1">
-              <LayoutTemplate className="h-3 w-3" />
-              PRD V2 개선 제안: 프리미엄 테마 프리셋
-            </label>
-            <div className="flex flex-wrap gap-1.5">
-              {themePresets.map((preset) => {
-                const isActive = preset.id === activeThemeId
-                return (
-                  <button
-                    key={preset.id}
-                    onClick={() => setActiveThemeId(preset.id)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all duration-200 cursor-pointer ${
-                      isActive 
-                        ? `${preset.primaryBg} text-white font-bold scale-[1.03] shadow-lg`
-                        : "bg-white/5 border border-white/5 hover:bg-white/10 text-zinc-300 dark:text-zinc-400"
-                    }`}
-                  >
-                    {preset.name}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* 실시간 알림 토스트 피드백 */}
-      {toastMessage && (
-        <div className="fixed top-6 left-1/2 z-50 -translate-x-1/2 flex items-center gap-2 rounded-full bg-zinc-900/95 border border-white/10 px-5 py-3 shadow-2xl text-xs font-medium text-white backdrop-blur-md animate-fade-in-down">
-          <Sparkles className="h-4 w-4 text-amber-400 animate-spin-[spin_3s_linear_infinite]" />
-          <span>{toastMessage}</span>
-        </div>
-      )}
 
       {/* 3. 메인 링크트리 컨테이너 */}
       <div className="flex w-full max-w-md flex-col items-center gap-8 animate-fade-in">
@@ -600,180 +258,43 @@ export default function Page() {
         <header className="flex flex-col items-center text-center w-full">
           <div className="relative group">
             {/* 프로필 외곽 다이내믹 그라데이션 광원 */}
-            <div className={`absolute -inset-1 rounded-full ${activePreset.primaryBg} opacity-50 blur-md group-hover:opacity-90 group-hover:blur-xl transition duration-700`} />
+            <div className={`absolute -inset-1 rounded-full ${activePreset.primaryBg} opacity-50 blur-md group-hover:opacity-95 group-hover:blur-xl transition duration-700`} />
             
             {/* 프로필 아바타 서클 */}
-            <div 
-              onClick={() => {
-                if (isAdminMode) {
-                  setTempAvatar(profile.avatarInitials)
-                  setIsEditingAvatar(true)
-                }
-              }}
-              className={`relative flex h-24 w-24 cursor-pointer items-center justify-center rounded-full bg-zinc-950 text-3xl font-black tracking-wider text-white shadow-2xl border-2 border-white/15 transition-transform duration-300 hover:scale-105`}
-            >
-              {isEditingAvatar ? (
-                <div className="absolute inset-0 flex items-center justify-center rounded-full bg-zinc-900 p-2">
-                  <input
-                    type="text"
-                    maxLength={2}
-                    value={tempAvatar}
-                    onChange={(e) => setTempAvatar(e.target.value)}
-                    onBlur={saveAvatarInitials}
-                    onKeyDown={(e) => e.key === "Enter" && saveAvatarInitials()}
-                    className="w-full text-center bg-transparent border-b border-fuchsia-500 font-bold uppercase text-2xl text-white focus:outline-none"
-                    autoFocus
-                  />
-                </div>
-              ) : (
-                profile.avatarInitials
-              )}
-
-              {/* 어드민 모드 편집 지시 뱃지 */}
-              {isAdminMode && !isEditingAvatar && (
-                <span className="absolute -top-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-amber-500 text-zinc-950 border border-zinc-950 shadow-md">
-                  <Edit3 className="h-3 w-3" />
-                </span>
-              )}
+            <div className="relative flex h-24 w-24 items-center justify-center rounded-full bg-zinc-950 text-3xl font-black tracking-wider text-white shadow-2xl border-2 border-white/15 transition-transform duration-300 hover:scale-105">
+              {profile.avatarInitials}
             </div>
           </div>
 
-          {/* 프로필 이름 (인라인 편집 지원) */}
-          <div className="mt-5 w-full flex items-center justify-center">
-            {isEditingProfileName ? (
-              <div className="flex items-center gap-1 border-b-2 border-fuchsia-500 pb-1 w-2/3 max-w-xs">
-                <input
-                  type="text"
-                  value={tempProfileName}
-                  onChange={(e) => setTempProfileName(e.target.value)}
-                  onBlur={saveProfileName}
-                  onKeyDown={(e) => e.key === "Enter" && saveProfileName()}
-                  className="bg-transparent text-center font-extrabold text-xl sm:text-2xl text-current border-none outline-none w-full"
-                  autoFocus
-                />
-                <button onClick={saveProfileName} className="text-emerald-400">
-                  <Check className="h-4 w-4" />
-                </button>
-              </div>
-            ) : (
-              <h1 
-                onClick={() => {
-                  if (isAdminMode) {
-                    setTempProfileName(profile.displayName)
-                    setIsEditingProfileName(true)
-                  }
-                }}
-                className={`text-xl font-black tracking-tight sm:text-2xl cursor-pointer ${
-                  isAdminMode ? "hover:underline hover:decoration-amber-400 hover:decoration-dashed" : ""
-                }`}
-              >
-                {profile.displayName}
-                {isAdminMode && <Edit3 className="inline-block h-3.5 w-3.5 ml-1.5 text-amber-500/70" />}
-              </h1>
-            )}
-          </div>
+          {/* 프로필 이름 */}
+          <h1 className="mt-5 text-xl font-black tracking-tight sm:text-2xl">
+            {profile.displayName}
+          </h1>
 
-          {/* 프로필 Bio 자기소개 (인라인 편집 지원) */}
+          {/* 프로필 Bio 자기소개 */}
           <div className="mt-3.5 w-full max-w-xs sm:max-w-sm">
-            {isEditingProfileBio ? (
-              <div className="flex flex-col gap-1 border border-fuchsia-500 rounded-lg p-2 bg-zinc-900/90">
-                <textarea
-                  value={tempProfileBio}
-                  onChange={(e) => setTempProfileBio(e.target.value)}
-                  className="bg-transparent text-sm text-zinc-100 border-none outline-none w-full min-h-[80px] resize-none"
-                  autoFocus
-                />
-                <div className="flex justify-end gap-1.5">
-                  <button 
-                    onClick={() => setIsEditingProfileBio(false)} 
-                    className="px-2 py-1 rounded bg-white/10 text-zinc-400 text-[10px] font-bold"
-                  >
-                    취소
-                  </button>
-                  <button 
-                    onClick={saveProfileBio} 
-                    className="px-2.5 py-1 rounded bg-emerald-500 text-zinc-950 text-[10px] font-black"
-                  >
-                    저장
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <p 
-                onClick={() => {
-                  if (isAdminMode) {
-                    setTempProfileBio(profile.bio)
-                    setIsEditingProfileBio(true)
-                  }
-                }}
-                className={`text-xs leading-relaxed text-zinc-400 cursor-pointer ${
-                  isAdminMode ? "hover:bg-amber-500/10 hover:border-amber-500/20 border border-transparent rounded-lg p-1.5 transition-colors" : ""
-                }`}
-              >
-                {profile.bio}
-                {isAdminMode && <Edit3 className="inline-block h-3 w-3 ml-1 text-amber-500/70" />}
-              </p>
-            )}
+            <p className="text-xs leading-relaxed text-zinc-400">
+              {profile.bio}
+            </p>
           </div>
 
-          {/* 4. 전문 관심 스택 배지 리스트 (PRD v2 Bio 개선 요소) */}
+          {/* 전문 관심 스택 배지 리스트 */}
           <div className="mt-5 flex flex-wrap justify-center gap-1.5 max-w-sm">
             {tags.map((tag) => (
               <span 
                 key={tag} 
-                className={`text-[10px] py-1 px-2.5 rounded-full font-bold select-none flex items-center gap-1.5 transition-transform hover:scale-105 ${activePreset.tagBg}`}
+                className={`text-[10px] py-1 px-2.5 rounded-full font-bold select-none transition-transform hover:scale-105 ${activePreset.tagBg}`}
               >
                 #{tag}
-                {isAdminMode && (
-                  <button 
-                    onClick={() => handleDeleteTag(tag)}
-                    className="hover:text-red-400 text-zinc-400 ml-0.5 rounded-full cursor-pointer transition-colors"
-                  >
-                    ×
-                  </button>
-                )}
               </span>
             ))}
-
-            {/* 태그 추가 버튼 및 인풋 (어드민 모드 활성시) */}
-            {isAdminMode && (
-              <>
-                {isAddingTag ? (
-                  <form onSubmit={handleAddTag} className="inline-flex items-center gap-1 bg-zinc-900 border border-amber-500/40 rounded-full px-2.5 py-0.5">
-                    <input
-                      type="text"
-                      placeholder="스택 입력"
-                      value={newTag}
-                      onChange={(e) => setNewTag(e.target.value)}
-                      className="bg-transparent text-[10px] text-white border-none outline-none w-16"
-                      autoFocus
-                    />
-                    <button type="submit" className="text-emerald-400 text-xs font-black">
-                      ✓
-                    </button>
-                    <button type="button" onClick={() => setIsAddingTag(false)} className="text-zinc-500 text-xs">
-                      ×
-                    </button>
-                  </form>
-                ) : (
-                  <button 
-                    onClick={() => setIsAddingTag(true)}
-                    className="text-[10px] py-1 px-2.5 rounded-full font-black bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 flex items-center gap-1"
-                  >
-                    <Plus className="h-2.5 w-2.5" />
-                    스택 배지 추가
-                  </button>
-                )}
-              </>
-            )}
           </div>
         </header>
 
-        {/* 5. 링크 목록 섹션 (인라인 편집 시뮬레이터 & 글래스모피즘 디자인) */}
-        <section className="flex w-full flex-col gap-4" id="links-container">
+        {/* 4. 연결 링크 목록 섹션 (순수 뷰어 모드 & 글래스모피즘 디자인) */}
+        <section className="flex w-full flex-col gap-4">
           {links.map((link, index) => {
             const faviconUrl = getFaviconUrl(link.url, 64)
-            const isEditing = editingLinkId === link.id
 
             return (
               <div
@@ -783,21 +304,15 @@ export default function Page() {
                   animationDelay: `${index * 100}ms`,
                   animationFillMode: "both",
                 }}
-                id={`link-item-${link.id}`}
               >
                 {/* 엣지 글로우 라인 장식 */}
                 <div className={`absolute -inset-0.5 rounded-2xl bg-gradient-to-r ${activePreset.primaryBg} opacity-0 group-hover:opacity-40 transition-opacity duration-300 blur-sm -z-10`} />
 
                 {/* 링크 메인 카드 */}
                 <div 
-                  className={`flex items-center gap-3.5 p-4 rounded-2xl transition-all duration-300 ${activePreset.cardClass} ${activePreset.cardHoverGlow} ${
-                    !isAdminMode ? "cursor-pointer transform hover:-translate-y-1 hover:scale-[1.02] active:scale-[0.98]" : ""
-                  }`}
+                  className={`flex items-center gap-3.5 p-4 rounded-2xl transition-all duration-300 ${activePreset.cardClass} ${activePreset.cardHoverGlow} cursor-pointer transform hover:-translate-y-1 hover:scale-[1.02] active:scale-[0.98]`}
                   onClick={() => {
-                    // 방문자 모드 시 클릭 시 외부 새탭 링크 실행
-                    if (!isAdminMode) {
-                      window.open(link.url, "_blank", "noopener,noreferrer")
-                    }
+                    window.open(link.url, "_blank", "noopener,noreferrer")
                   }}
                 >
                   
@@ -806,16 +321,14 @@ export default function Page() {
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={faviconUrl}
-                      alt={`${link.title} favicon`}
+                      alt={`${link.title} 파비콘`}
                       className="h-7 w-7 object-contain"
                       loading="lazy"
                       onError={(e) => {
-                        // 기본 파비콘 로드 에러 시 텍스트 첫 글자 아이콘 대체
                         const target = e.currentTarget
                         target.style.display = "none"
                         const parent = target.parentElement
                         if (parent) {
-                          // 기존 fallback 제거
                           const existingFallback = parent.querySelector(".favicon-fallback")
                           if (existingFallback) existingFallback.remove()
                           
@@ -828,189 +341,30 @@ export default function Page() {
                     />
                   </div>
 
-                  {/* 텍스트 타이틀 & URL 정보 (어드민 모드 시 인라인 편집 지원) */}
+                  {/* 텍스트 타이틀 & URL 정보 */}
                   <div className="flex-grow text-left overflow-hidden">
-                    {isEditing ? (
-                      <div className="flex flex-col gap-1.5 w-full bg-zinc-950/20 p-2 rounded-xl border border-white/10">
-                        {/* 타이틀 편집 인풋 */}
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[10px] font-bold text-zinc-500 w-9">이름</span>
-                          <input
-                            ref={editingField === "title" ? editInputRef : null}
-                            type="text"
-                            value={editingField === "title" ? tempEditValue : link.title}
-                            onChange={(e) => {
-                              if (editingField === "title") setTempEditValue(e.target.value)
-                            }}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              if (editingField !== "title") startEditingLink(link.id, "title", link.title)
-                            }}
-                            className="bg-zinc-900/90 text-xs font-semibold px-2 py-1 rounded text-white border border-white/10 outline-none w-full"
-                          />
-                        </div>
-                        {/* URL 편집 인풋 */}
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[10px] font-bold text-zinc-500 w-9">주소</span>
-                          <input
-                            ref={editingField === "url" ? editInputRef : null}
-                            type="text"
-                            value={editingField === "url" ? tempEditValue : link.url}
-                            onChange={(e) => {
-                              if (editingField === "url") setTempEditValue(e.target.value)
-                            }}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              if (editingField !== "url") startEditingLink(link.id, "url", link.url)
-                            }}
-                            className="bg-zinc-900/90 text-[11px] px-2 py-1 rounded text-zinc-300 border border-white/10 outline-none w-full"
-                          />
-                        </div>
-                        
-                        {/* 액션 버튼 */}
-                        <div className="flex justify-end gap-1.5 mt-1.5">
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              cancelLinkEditing()
-                            }}
-                            className="px-2 py-1 rounded bg-white/10 text-zinc-300 text-[10px] font-bold"
-                          >
-                            취소
-                          </button>
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              saveLinkEditing()
-                            }}
-                            className="px-2.5 py-1 rounded bg-emerald-500 text-zinc-950 text-[10px] font-black"
-                          >
-                            인라인 저장
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <h2 
-                          onClick={(e) => {
-                            if (isAdminMode) {
-                              e.stopPropagation()
-                              startEditingLink(link.id, "title", link.title)
-                            }
-                          }}
-                          className={`text-[14px] sm:text-[15px] font-black leading-snug tracking-tight transition-colors ${
-                            isAdminMode 
-                              ? "cursor-pointer hover:bg-amber-500/10 hover:border-b hover:border-amber-400" 
-                              : activePreset.primaryText
-                          }`}
-                        >
-                          {link.title}
-                          {isAdminMode && <Edit3 className="inline-block h-3 w-3 ml-1.5 text-amber-500/60" />}
-                        </h2>
-                        <p 
-                          onClick={(e) => {
-                            if (isAdminMode) {
-                              e.stopPropagation()
-                              startEditingLink(link.id, "url", link.url)
-                            }
-                          }}
-                          className={`mt-1 text-[11px] truncate font-medium text-zinc-400/85 max-w-[210px] sm:max-w-[270px] ${
-                            isAdminMode 
-                              ? "cursor-pointer hover:bg-amber-500/10 hover:border-b hover:border-amber-400" 
-                              : ""
-                          }`}
-                        >
-                          {link.url.replace(/^https?:\/\/(www\.)?/, "")}
-                          {isAdminMode && <Edit3 className="inline-block h-2.5 w-2.5 ml-1 text-amber-500/60" />}
-                        </p>
-                      </>
-                    )}
+                    <h2 className={`text-[14px] sm:text-[15px] font-black leading-snug tracking-tight transition-colors ${activePreset.primaryText}`}>
+                      {link.title}
+                    </h2>
+                    <p className="mt-1 text-[11px] truncate font-medium text-zinc-400/85 max-w-[210px] sm:max-w-[270px]">
+                      {link.url.replace(/^https?:\/\/(www\.)?/, "")}
+                    </p>
                   </div>
 
-                  {/* 우측 앰비언트 액션 영역 (방문자: External Link / 어드민: 휴지통 삭제) */}
-                  <div className="flex-shrink-0 flex items-center gap-1.5 pl-1">
-                    {isAdminMode ? (
-                      <button
-                        onClick={(e) => handleDeleteLink(link.id, e)}
-                        className="p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all cursor-pointer"
-                        title="링크 삭제"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    ) : (
-                      <span className={`text-zinc-400 transition-all duration-300 group-hover:translate-x-0.5 ${activePreset.accentText}`}>
-                        <ExternalLink className="h-4 w-4" />
-                      </span>
-                    )}
+                  {/* 우측 앰비언트 액션 아이콘 */}
+                  <div className="flex-shrink-0 flex items-center pl-1">
+                    <span className={`text-zinc-400 transition-all duration-300 group-hover:translate-x-0.5 ${activePreset.accentText}`}>
+                      <ExternalLink className="h-4 w-4" />
+                    </span>
                   </div>
                 </div>
               </div>
             )
           })}
-
-          {/* 6. 새 링크 추가 카드 폼 (어드민 모드에서만 아래에 부드럽게 노출) */}
-          {isAdminMode && (
-            <div className="w-full mt-2 animate-fade-in">
-              {isAddingLink ? (
-                <form 
-                  onSubmit={handleAddLink}
-                  className="p-4 rounded-2xl bg-amber-500/5 border border-amber-500/20 backdrop-blur-xl shadow-xl flex flex-col gap-3"
-                >
-                  <div className="flex items-center gap-2 text-xs font-black text-amber-400">
-                    <Plus className="h-3.5 w-3.5" />
-                    <span>새 링크 만들기</span>
-                  </div>
-
-                  <div className="flex flex-col gap-2.5">
-                    <input
-                      type="text"
-                      placeholder="웹페이지 타이틀 (예: 개인 블로그)"
-                      value={newTitle}
-                      onChange={(e) => setNewTitle(e.target.value)}
-                      className="bg-zinc-950/80 border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-amber-400/80 w-full"
-                      required
-                    />
-                    <input
-                      type="text"
-                      placeholder="연결 대상 URL 주소 (예: velog.io)"
-                      value={newUrl}
-                      onChange={(e) => setNewUrl(e.target.value)}
-                      className="bg-zinc-950/80 border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-amber-400/80 w-full"
-                      required
-                    />
-                  </div>
-
-                  <div className="flex justify-end gap-2 mt-1">
-                    <button
-                      type="button"
-                      onClick={() => setIsAddingLink(false)}
-                      className="px-3 py-1.5 rounded-lg bg-white/5 text-zinc-300 text-xs font-semibold hover:bg-white/10"
-                    >
-                      취소
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-4 py-1.5 rounded-lg bg-amber-500 text-zinc-950 text-xs font-black hover:bg-amber-400 transition-colors"
-                    >
-                      리스트 추가
-                    </button>
-                  </div>
-                </form>
-              ) : (
-                <button
-                  onClick={() => setIsAddingLink(true)}
-                  className="w-full py-4.5 rounded-2xl border-2 border-dashed border-amber-500/20 hover:border-amber-500/40 bg-amber-500/5 hover:bg-amber-500/10 transition-all duration-300 flex items-center justify-center gap-2 text-xs font-black text-amber-400 cursor-pointer"
-                >
-                  <Plus className="h-4 w-4" />
-                  <span>새 링크 카드 추가하기</span>
-                </button>
-              )}
-            </div>
-          )}
         </section>
 
         {/* 푸터 영역 */}
-        <footer className="mt-8 text-center text-[11px] text-zinc-500/80 select-none flex flex-col items-center gap-2">
+        <footer className="mt-8 text-center text-[11px] text-zinc-500/85 select-none flex flex-col items-center gap-2">
           <div className="flex items-center gap-1.5">
             <span className="h-1.5 w-1.5 rounded-full bg-zinc-500 animate-ping" />
             <p>Designed with High Aesthetics & Glassmorphism</p>
@@ -1019,7 +373,7 @@ export default function Page() {
         </footer>
       </div>
 
-      {/* 7. 하단 고정형 세련된 소셜 미디어 독 (PRD v2 제안) */}
+      {/* 5. 하단 고정형 세련된 소셜 미디어 독 */}
       <nav className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2 flex items-center gap-4 bg-zinc-900/70 dark:bg-black/40 border border-white/10 dark:border-white/5 backdrop-blur-xl px-5 py-2.5 rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.4)] transition-transform duration-300 hover:scale-105">
         {socials.map((social) => (
           <a
