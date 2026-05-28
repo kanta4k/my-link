@@ -1,10 +1,12 @@
 "use client"
 
 import React, { useEffect, useState, useRef } from "react"
+import { useRouter } from "next/navigation"
 import { useTheme } from "next-themes"
 import { 
   Sun, Moon, ExternalLink, Sparkles, Edit3, Check, Plus, Trash2, 
-  Globe, Mail, RotateCcw, Info, User, Eye, EyeOff, LayoutTemplate
+  Globe, Mail, RotateCcw, Info, User, Eye, EyeOff, LayoutTemplate,
+  Settings, ArrowRight
 } from "lucide-react"
 import { dummyLinks, dummySocials, defaultTags, getFaviconUrl, LinkItem, SocialItem } from "@/Data/links"
 import { Card } from "@/components/ui/card"
@@ -106,6 +108,7 @@ const themePresets: ThemePreset[] = [
 ];
 
 export default function Page() {
+  const router = useRouter()
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
 
@@ -510,7 +513,7 @@ export default function Page() {
               </div>
             </div>
 
-            {/* 어드민 모드 & 리셋 버튼 */}
+            {/* 어드민 모드 & 마이페이지 바로가기 & 리셋 버튼 */}
             <div className="flex items-center gap-2">
               <button
                 onClick={toggleAdminMode}
@@ -532,6 +535,16 @@ export default function Page() {
                     <span>관리자 시뮬레이터</span>
                   </>
                 )}
+              </button>
+
+              <button
+                onClick={() => router.push("/mypage")}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-gradient-to-r from-emerald-500 to-teal-500 text-white transition-all duration-300 hover:brightness-110 shadow-md cursor-pointer"
+                title="전용 관리 페이지(/mypage)로 이동"
+              >
+                <Settings className="h-3.5 w-3.5" />
+                <span>관리 페이지</span>
+                <ArrowRight className="h-3 w-3" />
               </button>
 
               <button
