@@ -524,7 +524,8 @@ export default function MyPage() {
     try {
       await updateDoc(doc(db, "users/anonymous/links", id), {
         title,
-        url
+        url,
+        updatedAt: serverTimestamp()
       })
       setEditingLinkId(null)
       showToast("✏️ 링크 카드가 성공적으로 수정되었습니다!")
