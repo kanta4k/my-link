@@ -3,14 +3,16 @@
 import React, { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { 
-  Sparkles, Plus, Trash2, ArrowLeft, Eye, Link2, 
+  Sparkles, Plus, Trash2, Link2, 
   User, FileText, BadgePlus, HelpCircle, RotateCcw, 
-  LayoutTemplate, AlertTriangle, Globe, Mail, Save, Edit3, Check, X
+  LayoutTemplate, AlertTriangle, Globe, Mail, Check, X, Edit3, Lock
 } from "lucide-react"
 import { dummyLinks, dummySocials, defaultTags, getFaviconUrl, LinkItem, SocialItem } from "@/Data/links"
 import { Card } from "@/components/ui/card"
 import { Dialog } from "@/components/ui/dialog"
 import { db } from "@/lib/firebase"
+import { useAuth } from "@/context/AuthContext"
+import Header from "@/components/Header"
 import { 
   collection, 
   addDoc, 
@@ -124,6 +126,8 @@ const themePresets: ThemePreset[] = [
 
 export default function MyPage() {
   const router = useRouter()
+  const { user, loading: authLoading, loginWithGoogle } = useAuth()
+
   const [mounted, setMounted] = useState(false)
   const [activeThemeId, setActiveThemeId] = useState<string>("cyberpunk")
 
@@ -165,128 +169,97 @@ export default function MyPage() {
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
   const [linkToDeleteId, setLinkToDeleteId] = useState<string | null>(null)
 
-  // 로컬 스토리지로부터 프로필, 테마, 소셜 데이터 로드 및 Firestore 링크 실시간 동기화
   useEffect(() => {
     setMounted(true)
+  }, [])
 
-    const savedProfile = localStorage.getItem("mylink_profile")
-    const savedTags = localStorage.getItem("mylink_tags")
-    const savedThemeId = localStorage.getItem("mylink_theme_id")
+  // 로드 및 Firestore 실시간 동기화 (유저 UID 전제)
+  useEffect(() => {
+    if (!mounted || !user) return
 
-    if (savedProfile) setProfile(JSON.parse(savedProfile))
-
-    if (savedTags) {
-      setTags(JSON.parse(savedTags))
-    } else {
-      setTags(defaultTags)
-    }
-
-    if (savedThemeId) {
-      setActiveThemeId(savedThemeId)
-    }
-
-    // Firestore users/anonymous/links 실시간 동기화 및 자동 마이그레이션
-    const q = query(collection(db, "users/anonymous/links"), orderBy("createdAt", "desc"))
-    const unsubscribe = onSnapshot(q, async (snapshot) => {
-      if (snapshot.empty) {
-        // Firestore가 비어 있는 경우 초기 마이그레이션 실행
-        const savedLinks = localStorage.getItem("mylink_links")
-        let initialData: LinkItem[] = dummyLinks
-        
-        if (savedLinks) {
-          try {
-            initialData = JSON.parse(savedLinks)
-          } catch (e) {
-            console.error("Failed to parse saved links from localStorage", e)
-          }
-        }
-        
-        // Firestore로 데이터 업로드
-        try {
-          const batch = writeBatch(db)
-          const linksRef = collection(db, "users/anonymous/links")
-          initialData.forEach((item) => {
-            const newDocRef = doc(linksRef)
-            batch.set(newDocRef, {
-              title: item.title,
-              url: item.url,
-              createdAt: serverTimestamp()
-            })
-          })
-          await batch.commit()
-          localStorage.removeItem("mylink_links") // 중복 방지를 위해 제거
-        } catch (err) {
-          console.error("Migration to Firestore failed", err)
-        }
+    // 1. 프로필 정보 실시간 동기화
+    const profileDocRef = doc(db, "users", user.uid)
+    const unsubscribeProfile = onSnapshot(profileDocRef, async (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data()
+        if (data.profile) setProfile(data.profile)
+        if (data.tags) setTags(data.tags)
+        if (data.themeId) setActiveThemeId(data.themeId)
       } else {
-        const fetchedLinks = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          title: doc.data().title || "",
-          url: doc.data().url || "",
-        }))
-        setLinks(fetchedLinks)
+        // Firestore에 프로필 문서가 없는 경우 로컬 스토리지 마이그레이션 또는 초기 Seeding
+        const savedProfile = localStorage.getItem("mylink_profile")
+        const savedTags = localStorage.getItem("mylink_tags")
+        const savedThemeId = localStorage.getItem("mylink_theme_id")
+
+        const initialProfile = savedProfile ? JSON.parse(savedProfile) : {
+          displayName: user.displayName || "정운학 (Unhak Jeong)",
+          bio: "🚀 마이링크 프론트엔드 리디자인 연구원 | 멋진 인터랙션과 최상의 UX를 설계하는 제품 지향적 개발자입니다. React, Next.js, Rust에 푹 빠져있습니다.",
+          avatarInitials: user.displayName ? user.displayName.substring(0, 2).toUpperCase() : "JU"
+        }
+        const initialTags = savedTags ? JSON.parse(savedTags) : defaultTags
+        const initialThemeId = savedThemeId || "cyberpunk"
+
+        // 최초 1회 Firestore 문서 생성
+        try {
+          await setDoc(profileDocRef, {
+            profile: initialProfile,
+            tags: initialTags,
+            themeId: initialThemeId,
+            createdAt: serverTimestamp()
+          }, { merge: true })
+        } catch (e) {
+          console.error("Failed to seed initial user profile in Firestore", e)
+        }
+
+        setProfile(initialProfile)
+        setTags(initialTags)
+        setActiveThemeId(initialThemeId)
       }
     }, (error) => {
-      console.error("Firestore onSnapshot error: ", error)
+      console.error("Firestore Profile Sync Error: ", error)
     })
 
-    // Firestore users/anonymous/socials 실시간 동기화 및 자동 마이그레이션
-    const socialsRef = collection(db, "users/anonymous/socials")
-    const unsubscribeSocials = onSnapshot(socialsRef, async (snapshot) => {
-      if (snapshot.empty) {
-        // Firestore가 비어 있는 경우 초기 dummySocials 마이그레이션 실행
-        try {
-          const batch = writeBatch(db)
-          dummySocials.forEach((item) => {
-            const docRef = doc(db, "users/anonymous/socials", item.platform)
-            batch.set(docRef, {
-              platform: item.platform,
-              url: item.url
-            })
-          })
-          await batch.commit()
-        } catch (err) {
-          console.error("Socials migration to Firestore failed", err)
-        }
-      } else {
-        const fetchedSocials = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          platform: doc.data().platform || doc.id,
-          url: doc.data().url || "",
-        })) as SocialItem[]
-
-        // 순서 고정: dummySocials의 순서대로 정렬
-        const order = ['github', 'linkedin', 'twitter', 'youtube', 'instagram']
-        const sortedSocials = [...fetchedSocials].sort((a, b) => {
-          return order.indexOf(a.platform) - order.indexOf(b.platform)
-        })
-        setSocials(sortedSocials)
-      }
+    // 2. Links 실시간 동기화 (users/{uid}/links)
+    const linksRef = collection(db, "users", user.uid, "links")
+    const q = query(linksRef, orderBy("createdAt", "desc"))
+    const unsubscribeLinks = onSnapshot(q, async (snapshot) => {
+      const fetchedLinks = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        title: doc.data().title || "",
+        url: doc.data().url || "",
+      }))
+      setLinks(fetchedLinks)
     }, (error) => {
-      console.error("Firestore socials onSnapshot error: ", error)
+      console.error("Firestore links Sync Error: ", error)
+    })
+
+    // 3. Socials 실시간 동기화 (users/{uid}/socials)
+    const socialsRef = collection(db, "users", user.uid, "socials")
+    const unsubscribeSocials = onSnapshot(socialsRef, async (snapshot) => {
+      const fetchedSocials = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        platform: doc.data().platform || doc.id,
+        url: doc.data().url || "",
+      })) as SocialItem[]
+
+      const order = ['github', 'linkedin', 'twitter', 'youtube', 'instagram']
+      const sortedSocials = [...fetchedSocials].sort((a, b) => {
+        return order.indexOf(a.platform) - order.indexOf(b.platform)
+      })
+      setSocials(sortedSocials)
+    }, (error) => {
+      console.error("Firestore socials Sync Error: ", error)
     })
 
     return () => {
-      unsubscribe()
+      unsubscribeProfile()
+      unsubscribeLinks()
       unsubscribeSocials()
     }
-  }, [])
+  }, [user, mounted])
 
   // 활성 프리셋 정보 로드
   const activePreset = themePresets.find(p => p.id === activeThemeId) || themePresets[0]
-
-  // 데이터 통합 저장 유틸리티 (로컬 스토리지에 프로필/소셜/태그/테마만 저장)
-  const saveAllToLocal = (
-    updatedProfile = profile, 
-    updatedSocials = socials, 
-    updatedTags = tags,
-    themeId = activeThemeId
-  ) => {
-    localStorage.setItem("mylink_profile", JSON.stringify(updatedProfile))
-    localStorage.setItem("mylink_socials", JSON.stringify(updatedSocials))
-    localStorage.setItem("mylink_tags", JSON.stringify(updatedTags))
-    localStorage.setItem("mylink_theme_id", themeId)
-  }
 
   // 알림 피드백 노출 유틸리티
   const showToast = (message: string) => {
@@ -296,18 +269,27 @@ export default function MyPage() {
     }, 2800)
   }
 
-  // 프로필 텍스트 필드 실시간 반영 및 저장
-  const handleProfileFieldChange = (field: "displayName" | "bio" | "avatarInitials", value: string) => {
+  // 프로필 텍스트 필드 실시간 반영 및 저장 (Firestore 연동)
+  const handleProfileFieldChange = async (field: "displayName" | "bio" | "avatarInitials", value: string) => {
     const updated = { ...profile, [field]: value }
     setProfile(updated)
-    saveAllToLocal(updated)
+    localStorage.setItem("mylink_profile", JSON.stringify(updated))
+
+    if (!user) return
+    try {
+      await setDoc(doc(db, "users", user.uid), {
+        profile: updated
+      }, { merge: true })
+    } catch (err) {
+      console.error("Failed to save profile to Firestore", err)
+    }
   }
 
-  // 관심사 스택 배지 추가
-  const handleAddTagSubmit = (e: React.FormEvent) => {
+  // 관심사 스택 배지 추가 (Firestore 연동)
+  const handleAddTagSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const val = newTag.trim()
-    if (!val) return
+    if (!val || !user) return
 
     if (tags.includes(val)) {
       showToast("⚠️ 이미 등록된 관심 스택명입니다.")
@@ -316,25 +298,54 @@ export default function MyPage() {
 
     const updated = [...tags, val]
     setTags(updated)
-    saveAllToLocal(profile, socials, updated)
+    localStorage.setItem("mylink_tags", JSON.stringify(updated))
     setNewTag("")
     setIsAddingTag(false)
-    showToast("🏷️ 관심 스택이 프로필에 반영되었습니다.")
+
+    try {
+      await setDoc(doc(db, "users", user.uid), {
+        tags: updated
+      }, { merge: true })
+      showToast("🏷️ 관심 스택이 프로필에 반영되었습니다.")
+    } catch (err) {
+      console.error(err)
+      showToast("❌ 관심 스택 저장에 실패했습니다.")
+    }
   }
 
-  // 관심사 스택 배지 삭제
-  const handleDeleteTag = (targetTag: string) => {
+  // 관심사 스택 배지 삭제 (Firestore 연동)
+  const handleDeleteTag = async (targetTag: string) => {
+    if (!user) return
     const updated = tags.filter(t => t !== targetTag)
     setTags(updated)
-    saveAllToLocal(profile, socials, updated)
-    showToast("🗑️ 태그가 삭제되었습니다.")
+    localStorage.setItem("mylink_tags", JSON.stringify(updated))
+
+    try {
+      await setDoc(doc(db, "users", user.uid), {
+        tags: updated
+      }, { merge: true })
+      showToast("🗑️ 태그가 삭제되었습니다.")
+    } catch (err) {
+      console.error(err)
+      showToast("❌ 태그 삭제에 실패했습니다.")
+    }
   }
 
-  // 테마 프리셋 실시간 변경
-  const handleThemePresetChange = (themeId: string) => {
+  // 테마 프리셋 실시간 변경 (Firestore 연동)
+  const handleThemePresetChange = async (themeId: string) => {
     setActiveThemeId(themeId)
     localStorage.setItem("mylink_theme_id", themeId)
-    showToast(`🎨 테마 프리셋이 '${themePresets.find(t=>t.id===themeId)?.name}'(으)로 변경되었습니다!`)
+
+    if (!user) return
+    try {
+      await setDoc(doc(db, "users", user.uid), {
+        themeId
+      }, { merge: true })
+      showToast(`🎨 테마 프리셋이 '${themePresets.find(t=>t.id===themeId)?.name}'(으)로 변경되었습니다!`)
+    } catch (err) {
+      console.error(err)
+      showToast("❌ 테마 저장에 실패했습니다.")
+    }
   }
 
   // 소셜 미디어 링크 편집 개시
@@ -343,22 +354,20 @@ export default function MyPage() {
     setTempSocialUrl(currentUrl)
   }
 
-  // 소셜 미디어 링크 저장
+  // 소셜 미디어 링크 저장 (Firestore 연동)
   const saveSocialLink = async () => {
-    if (!editingSocialPlatform) return
+    if (!editingSocialPlatform || !user) return
     let finalUrl = tempSocialUrl.trim()
 
     // 공백이 아닌 경우에만 유효성 정밀 검증
     if (finalUrl) {
       if (editingSocialPlatform === 'email') {
-        // 간단한 이메일 정규식 필터링
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
         if (!emailRegex.test(finalUrl)) {
           showToast("❌ 올바른 이메일 주소를 입력하세요.")
           return
         }
       } else {
-        // 소셜 URL 보완 및 검증
         if (!/^https?:\/\//i.test(finalUrl)) {
           finalUrl = "https://" + finalUrl
         }
@@ -376,8 +385,7 @@ export default function MyPage() {
     }
 
     try {
-      // Firestore에 직접 업데이트 연동
-      await setDoc(doc(db, "users/anonymous/socials", editingSocialPlatform), {
+      await setDoc(doc(db, "users", user.uid, "socials", editingSocialPlatform), {
         platform: editingSocialPlatform,
         url: finalUrl
       }, { merge: true })
@@ -398,28 +406,23 @@ export default function MyPage() {
     setIsDialogOpen(true)
   }
 
-  // 다이얼로그 폼을 통한 링크 신규 추가
+  // 다이얼로그 폼을 통한 링크 신규 추가 (Firestore 연동)
   const handleAddLinkSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!user) return
     
-    // 1. 제목/주소 가져오기
     const title = newTitle.trim()
     let url = newUrl.trim()
 
-    // 2. 검증
-    // 2-1. 빈칸 체크 (제목)
     if (!title) {
       showToast("❌ 제목을 입력해주세요")
       return
     }
-
-    // 2-2. 빈칸 체크 (주소)
     if (!url) {
       showToast("❌ 주소를 입력해주세요")
       return
     }
 
-    // 2-3. 주소형식 체크
     let testUrl = url
     if (!/^https?:\/\//i.test(testUrl)) {
       testUrl = "https://" + testUrl
@@ -432,18 +435,15 @@ export default function MyPage() {
         isValidUrl = true
         url = testUrl
       }
-    } catch (err) {
-      // parsedUrl 파싱 실패 시 isValidUrl은 false 유지
-    }
+    } catch (err) {}
 
     if (!isValidUrl) {
       showToast("❌ 올바른 주소를 입력해주세요")
       return
     }
 
-    // 3. Firestore에 추가
     try {
-      await addDoc(collection(db, "users/anonymous/links"), {
+      await addDoc(collection(db, "users", user.uid, "links"), {
         title,
         url,
         createdAt: serverTimestamp()
@@ -464,9 +464,9 @@ export default function MyPage() {
 
   // 실제 링크 삭제 실행 (Firestore 연동)
   const confirmDeleteLink = async () => {
-    if (!linkToDeleteId) return
+    if (!linkToDeleteId || !user) return
     try {
-      await deleteDoc(doc(db, "users/anonymous/links", linkToDeleteId))
+      await deleteDoc(doc(db, "users", user.uid, "links", linkToDeleteId))
       setIsDeleteConfirmOpen(false)
       setLinkToDeleteId(null)
       showToast("🗑️ 링크 카드가 목록에서 삭제되었습니다.")
@@ -483,12 +483,12 @@ export default function MyPage() {
     setEditUrl(currentUrl)
   }
 
-  // 링크 인라인 편집 저장 (Firestore 연동 및 유효성 검증)
+  // 링크 인라인 편집 저장 (Firestore 연동)
   const handleUpdateLinkSubmit = async (id: string) => {
+    if (!user) return
     const title = editTitle.trim()
     let url = editUrl.trim()
 
-    // 1. 빈칸 검증
     if (!title) {
       showToast("❌ 제목을 입력해주세요")
       return
@@ -498,7 +498,6 @@ export default function MyPage() {
       return
     }
 
-    // 2. URL 유효성 및 프로토콜 검증
     let testUrl = url
     if (!/^https?:\/\//i.test(testUrl)) {
       testUrl = "https://" + testUrl
@@ -511,18 +510,15 @@ export default function MyPage() {
         isValidUrl = true
         url = testUrl
       }
-    } catch (err) {
-      // 파싱 오류 시 isValidUrl은 false 유지
-    }
+    } catch (err) {}
 
     if (!isValidUrl) {
       showToast("❌ 올바른 주소를 입력해주세요")
       return
     }
 
-    // 3. Firestore 업데이트 연동
     try {
-      await updateDoc(doc(db, "users/anonymous/links", id), {
+      await updateDoc(doc(db, "users", user.uid, "links", id), {
         title,
         url,
         updatedAt: serverTimestamp()
@@ -542,18 +538,18 @@ export default function MyPage() {
     setEditUrl("")
   }
 
-  // 전체 데이터 데모 상태로 초기화 (Danger Zone)
+  // 전체 데이터 데모 상태로 초기화 (개인 계정 복구)
   const handleResetToDemo = async () => {
-    if (confirm("🚨 경고: 정말 모든 데이터를 데모 초기값으로 복구하시겠습니까?\n현재 브라우저에 임시 저장된 모든 프로필 및 링크 카드 수정 이력이 초기화됩니다.")) {
+    if (!user) return
+    if (confirm("🚨 경고: 정말 모든 데이터를 데모 초기값으로 복구하시겠습니까?\n현재 본인 계정에 업로드된 모든 프로필 및 링크 카드 수정 이력이 초기화됩니다.")) {
       const defaultProfile = {
-        displayName: "정운학 (Unhak Jeong)",
+        displayName: user.displayName || "정운학 (Unhak Jeong)",
         bio: "🚀 마이링크 프론트엔드 리디자인 연구원 | 멋진 인터랙션과 최상의 UX를 설계하는 제품 지향적 개발자입니다. React, Next.js, Rust에 푹 빠져있습니다.",
-        avatarInitials: "JU"
+        avatarInitials: user.displayName ? user.displayName.substring(0, 2).toUpperCase() : "JU"
       }
 
       try {
-        // Firestore 컬렉션 일괄 삭제 및 복구
-        const linksRef = collection(db, "users/anonymous/links")
+        const linksRef = collection(db, "users", user.uid, "links")
         const snapshot = await getDocs(linksRef)
         const batch = writeBatch(db)
 
@@ -562,7 +558,7 @@ export default function MyPage() {
           batch.delete(doc.ref)
         })
 
-        // 더미데이터 추가 등록
+        // 데모 링크 추가
         dummyLinks.forEach((item) => {
           const newDocRef = doc(linksRef)
           batch.set(newDocRef, {
@@ -572,19 +568,28 @@ export default function MyPage() {
           })
         })
 
-        // 소셜 데이터도 일괄 삭제 및 복구
-        const socialsRef = collection(db, "users/anonymous/socials")
+        // 소셜 데이터 리셋
+        const socialsRef = collection(db, "users", user.uid, "socials")
         const socialsSnapshot = await getDocs(socialsRef)
         socialsSnapshot.docs.forEach((doc) => {
           batch.delete(doc.ref)
         })
         dummySocials.forEach((item) => {
-          const docRef = doc(db, "users/anonymous/socials", item.platform)
+          const docRef = doc(db, "users", user.uid, "socials", item.platform)
           batch.set(docRef, {
             platform: item.platform,
             url: item.url
           })
         })
+
+        // 프로필 문서 리셋
+        const profileDocRef = doc(db, "users", user.uid)
+        batch.set(profileDocRef, {
+          profile: defaultProfile,
+          tags: defaultTags,
+          themeId: "cyberpunk",
+          createdAt: serverTimestamp()
+        }, { merge: true })
 
         await batch.commit()
 
@@ -593,8 +598,7 @@ export default function MyPage() {
         setTags(defaultTags)
         setActiveThemeId("cyberpunk")
 
-        saveAllToLocal(defaultProfile, dummySocials, defaultTags, "cyberpunk")
-        showToast("🔄 데이터가 데모 기본값으로 완벽하게 초기화되었습니다.")
+        showToast("🔄 본인 계정의 데이터가 데모 기본값으로 완벽하게 초기화되었습니다.")
       } catch (err) {
         console.error("Failed to reset Firestore to demo data", err)
         showToast("❌ 데모 복구 초기화에 실패했습니다.")
@@ -648,7 +652,8 @@ export default function MyPage() {
     }
   }
 
-  if (!mounted) {
+  // 1. 전체 인증 로딩 처리
+  if (!mounted || authLoading) {
     return (
       <div className="flex min-h-svh items-center justify-center bg-zinc-950 text-white">
         <div className="flex flex-col items-center gap-4">
@@ -659,16 +664,79 @@ export default function MyPage() {
     )
   }
 
+  // 2. 비로그인 접근 제한 화면 (보안 게이트 & 구글 로그인 유도)
+  if (!user) {
+    return (
+      <main className="relative flex min-h-svh w-full flex-col items-center justify-center overflow-x-hidden p-4 transition-all duration-700 bg-radial from-slate-950 via-zinc-950 to-neutral-950 text-slate-100">
+        
+        {/* 상단 앰비언트 글로우 */}
+        <div className="pointer-events-none absolute top-10 left-1/4 -z-10 h-80 w-80 rounded-full bg-fuchsia-500/10 blur-3xl" />
+        <div className="pointer-events-none absolute bottom-10 right-1/4 -z-10 h-80 w-80 rounded-full bg-cyan-500/10 blur-3xl" />
+
+        {/* 기본 헤더 탑재 */}
+        <Header isDashboard={true} />
+
+        <div className="w-full max-w-md p-8 rounded-3xl border border-white/10 bg-slate-900/40 backdrop-blur-2xl shadow-2xl flex flex-col items-center text-center gap-6 relative overflow-hidden animate-fade-in">
+          <div className="absolute -inset-0.5 rounded-3xl bg-gradient-to-r from-fuchsia-500 to-cyan-500 opacity-20 blur-sm -z-10" />
+
+          {/* 자물쇠 잠금 마이크로 애니메이션 */}
+          <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-zinc-950 border border-white/10 shadow-lg">
+            <Lock className="h-7.5 w-7.5 text-fuchsia-400 animate-pulse" />
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <h1 className="text-xl sm:text-2xl font-black bg-gradient-to-r from-white via-zinc-100 to-zinc-400 bg-clip-text text-transparent">
+              관리자 로그인 필요
+            </h1>
+            <p className="text-xs text-zinc-400 leading-relaxed max-w-xs mx-auto">
+              마이링크 관리 센터는 보호된 영역입니다. 나만의 프리미엄 링크 트리를 편집하려면 구글 로그인을 진행해 주세요.
+            </p>
+          </div>
+
+          <button
+            onClick={loginWithGoogle}
+            className="w-full flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl border border-white/10 bg-zinc-900/60 hover:bg-zinc-950 text-xs font-black text-white hover:border-fuchsia-500/40 shadow-xl transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+          >
+            {/* Google SVG */}
+            <svg className="h-4 w-4" viewBox="0 0 24 24">
+              <path
+                fill="#EA4335"
+                d="M12 5.04c1.66 0 3.2.57 4.38 1.69l3.27-3.27C17.67 1.54 15.02 0 12 0 7.35 0 3.37 2.67 1.48 6.56l3.89 3.02c.9-2.73 3.44-4.54 6.63-4.54z"
+              />
+              <path
+                fill="#4285F4"
+                d="M23.49 12.27c0-.81-.07-1.59-.2-2.36H12v4.51h6.43c-.28 1.44-1.1 2.67-2.33 3.49l3.63 2.81c2.12-1.95 3.36-4.82 3.36-8.45z"
+              />
+              <path
+                fill="#FBBC05"
+                d="M5.37 14.54c-.24-.72-.37-1.49-.37-2.29s.13-1.57.37-2.29L1.48 6.93C.53 8.88 0 11.08 0 13.41c0 2.33.53 4.53 1.48 6.48l3.89-3.02c-.24-.72-.37-1.49-.37-2.29z"
+              />
+              <path
+                fill="#34A853"
+                d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.63-2.81c-1.01.68-2.31 1.09-3.8 1.09-3.19 0-5.73-1.81-6.63-4.54L1.98 17.85C3.87 21.33 7.85 24 12 24z"
+              />
+            </svg>
+            <span>Google 계정으로 로그인</span>
+          </button>
+        </div>
+      </main>
+    )
+  }
+
+  // 3. 정상 로그인 대시보드 화면
   return (
-    <main className={`relative flex min-h-svh w-full flex-col items-center justify-start overflow-x-hidden p-4 pb-20 pt-8 sm:pt-12 transition-all duration-700 ease-in-out ${activePreset.bgClass}`}>
+    <main className={`relative flex min-h-svh w-full flex-col items-center justify-start overflow-x-hidden p-4 pb-20 pt-24 sm:pt-32 transition-all duration-700 ease-in-out ${activePreset.bgClass}`}>
       
+      {/* 고품격 프리미엄 헤더 */}
+      <Header activePreset={activePreset} isDashboard={true} />
+
       {/* 1. 상단 백라이트 앰비언트 글로우 장식 */}
       <div className={`pointer-events-none absolute top-0 left-1/4 -z-10 h-[400px] w-[400px] rounded-full bg-gradient-to-b ${activePreset.auraClass1} blur-3xl`} />
       <div className={`pointer-events-none absolute top-20 right-1/4 -z-10 h-[450px] w-[450px] rounded-full bg-gradient-to-b ${activePreset.auraClass2} blur-3xl`} />
 
       {/* 실시간 알림 토스트 피드백 */}
       {toastMessage && (
-        <div className="fixed top-6 left-1/2 z-[100] -translate-x-1/2 flex items-center gap-2 rounded-full bg-zinc-900/95 border border-white/10 px-5 py-3 shadow-2xl text-xs font-semibold text-white backdrop-blur-md animate-fade-in-down">
+        <div className="fixed top-24 left-1/2 z-[100] -translate-x-1/2 flex items-center gap-2 rounded-full bg-zinc-900/95 border border-white/10 px-5 py-3 shadow-2xl text-xs font-semibold text-white backdrop-blur-md animate-fade-in-down">
           <Sparkles className="h-4 w-4 text-amber-400 animate-spin-[spin_3s_linear_infinite]" />
           <span>{toastMessage}</span>
         </div>
@@ -677,25 +745,6 @@ export default function MyPage() {
       {/* 메인 어드민 대시보드 쉘 */}
       <div className="w-full max-w-xl flex flex-col gap-6 animate-fade-in">
         
-        {/* 상단 액션 바 */}
-        <header className="flex items-center justify-between p-1 bg-white/5 border border-white/10 dark:bg-black/25 dark:border-white/5 rounded-2xl backdrop-blur-md">
-          <button
-            onClick={() => router.push("/")}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-zinc-300 hover:text-white rounded-xl transition-all hover:bg-white/5 cursor-pointer"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            <span>메인 페이지로 이동</span>
-          </button>
-          
-          <button
-            onClick={() => router.push("/")}
-            className={`flex items-center gap-1.5 px-4 py-2 text-xs font-black text-white ${activePreset.primaryBg} rounded-xl shadow-lg hover:brightness-110 transition-all cursor-pointer`}
-          >
-            <Eye className="h-4 w-4 animate-pulse" />
-            <span>내 마이링크 보러가기</span>
-          </button>
-        </header>
-
         {/* 대시보드 인트로 */}
         <section className="flex flex-col gap-1.5 text-left pl-1">
           <h1 className="text-xl sm:text-2xl font-black bg-gradient-to-r from-white via-zinc-100 to-zinc-400 bg-clip-text text-transparent flex items-center gap-2">
@@ -703,11 +752,11 @@ export default function MyPage() {
             마이링크 관리 센터
           </h1>
           <p className="text-xs text-zinc-400 leading-relaxed">
-            비주얼 테마, 프로필, 링크 카드 및 하단 소셜 미디어 연동까지 마이링크의 모든 설정을 이곳에서 완벽히 통합 제어합니다.
+            안녕하세요, <span className="text-zinc-200 font-bold">{user.displayName || "사용자"}</span>님! 나만의 퍼블릭 링크, 비주얼 테마, 프로필 상태를 완벽하게 제어합니다.
           </p>
         </section>
 
-        {/* CARD 1: 마이링크 테마 프리셋 설정 (이전 탑재) */}
+        {/* CARD 1: 마이링크 테마 프리셋 설정 */}
         <Card className={`p-5 backdrop-blur-xl border flex flex-col gap-4.5 ${activePreset.cardClass}`}>
           <div className="flex items-center gap-2 border-b border-white/10 pb-3">
             <LayoutTemplate className={`h-4.5 w-4.5 ${activePreset.primaryText}`} />
@@ -716,7 +765,7 @@ export default function MyPage() {
 
           <div className="flex flex-col gap-2 text-left">
             <p className="text-[11px] text-zinc-400">
-              PRD V2 제안 사항: 내 퍼블릭 링크 페이지에 적용될 5가지 프리미엄 그래디언트 테마 프리셋입니다.
+              내 퍼블릭 링크 페이지에 적용될 5가지 프리미엄 그래디언트 테마 프리셋입니다.
             </p>
             
             <div className="flex flex-wrap gap-2.5 mt-2">
@@ -876,7 +925,6 @@ export default function MyPage() {
           <div className="flex flex-col gap-2 max-h-[350px] overflow-y-auto pr-1">
             {links.map((link) => {
               const faviconUrl = getFaviconUrl(link.url, 64)
-              
               const isLinkEditing = editingLinkId === link.id
 
               return (
@@ -997,7 +1045,7 @@ export default function MyPage() {
           </div>
         </Card>
 
-        {/* CARD 4: 하단 소셜 독(Social Dock) 주소 편집 */}
+        {/* CARD 4: 소셜 아이콘 바 설정 */}
         <Card className={`p-5 backdrop-blur-xl border flex flex-col gap-4 ${activePreset.cardClass}`}>
           <div className="flex items-center gap-2 border-b border-white/10 pb-3">
             <Globe className={`h-4.5 w-4.5 ${activePreset.primaryText}`} />
@@ -1005,13 +1053,12 @@ export default function MyPage() {
           </div>
 
           <p className="text-[11px] text-zinc-400 text-left">
-            메인 페이지 최하단에 정렬되는 툴팁형 소셜 아이콘 바의 연결 경로를 직접 지정합니다.
+            메인 페이지 최하단에 정렬되는 툴팁형 소셜 아이콘 바의 연결 경로를 지정합니다.
           </p>
 
           <div className="flex flex-col gap-2.5 mt-1 text-left">
             {socials.map((social) => {
               const isEditing = editingSocialPlatform === social.platform
-
               const hasUrl = !!social.url
 
               return (
@@ -1078,7 +1125,7 @@ export default function MyPage() {
           </div>
         </Card>
 
-        {/* CARD 5: DANGER ZONE (위험 구역) - 데모 복구 카드 신설 */}
+        {/* CARD 5: Danger Zone */}
         <Card className="p-5 backdrop-blur-xl border border-red-500/20 bg-red-950/10 flex flex-col gap-4">
           <div className="flex items-center gap-2 border-b border-red-500/15 pb-3">
             <AlertTriangle className="h-4.5 w-4.5 text-red-400 animate-pulse" />
@@ -1089,7 +1136,7 @@ export default function MyPage() {
             <div>
               <h4 className="text-xs font-black text-zinc-200">데모 데이터 전체 복구 및 리셋</h4>
               <p className="text-[10px] text-zinc-500 leading-relaxed mt-1">
-                작업 및 수정하시던 브라우저 내부의 모든 로컬 스토리지 데이터를 초기 데모 프리셋 정보로 완전 리셋합니다.
+                기존에 설정하신 나만의 마이링크 데이터를 전부 지우고 최초 데모 프리셋 데이터로 복구 및 리셋합니다.
               </p>
             </div>
             
@@ -1117,7 +1164,6 @@ export default function MyPage() {
         title="새 마이링크 카드 만들기"
       >
         <form onSubmit={handleAddLinkSubmit} className="flex flex-col gap-4 text-left">
-          
           <div className="flex flex-col gap-1.5">
             <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest pl-0.5">
               웹페이지 제목
@@ -1179,7 +1225,7 @@ export default function MyPage() {
             <AlertTriangle className="h-6 w-6 text-red-400 flex-shrink-0 animate-bounce" />
             <div className="text-xs text-red-200">
               <p className="font-black">정말 이 링크 카드를 목록에서 삭제하시겠습니까?</p>
-              <p className="mt-1 font-medium text-red-300/80 text-[10px]">이 작업은 되돌릴수 없습니다</p>
+              <p className="mt-1 font-medium text-red-300/80 text-[10px]">이 작업은 되돌릴 수 없습니다.</p>
             </div>
           </div>
 

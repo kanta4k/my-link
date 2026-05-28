@@ -1,14 +1,13 @@
 "use client"
 
-import React, { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import React, { useEffect, useState, Suspense } from "react"
+import { useSearchParams } from "next/navigation"
 import { useTheme } from "next-themes"
-import { 
-  ExternalLink, Sparkles, Settings, Globe, Mail, 
-  ArrowRight, LayoutTemplate
-} from "lucide-react"
+import { ExternalLink, Sparkles, Globe, Mail, ArrowRight } from "lucide-react"
 import { dummyLinks, dummySocials, defaultTags, getFaviconUrl, LinkItem, SocialItem } from "@/Data/links"
 import { db } from "@/lib/firebase"
+import { useAuth } from "@/context/AuthContext"
+import Header from "@/components/Header"
 import { 
   collection, 
   onSnapshot, 
@@ -117,10 +116,27 @@ const themePresets: ThemePreset[] = [
 ];
 
 export default function Page() {
-  const router = useRouter()
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-svh items-center justify-center bg-zinc-950 text-white">
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-r-2 border-fuchsia-500" />
+          <p className="text-xs font-bold tracking-widest text-zinc-400">마이링크를 불러오는 중...</p>
+        </div>
+      </div>
+    }>
+      <LinkTreeContent />
+    </Suspense>
+  )
+}
+
+function LinkTreeContent() {
   const { setTheme } = useTheme()
+  const { user, loginWithGoogle } = useAuth()
+  const searchParams = useSearchParams()
+  const queryUid = searchParams.get("uid")
+
   const [mounted, setMounted] = useState(false)
-  
   const [activeThemeId, setActiveThemeId] = useState<string>("cyberpunk")
   
   // 프로필 정보 상태
@@ -135,47 +151,71 @@ export default function Page() {
   const [socials, setSocials] = useState<SocialItem[]>([])
   const [tags, setTags] = useState<string[]>([])
 
-  // Hydration mismatch 방지, 로컬스토리지 로딩 및 Firestore 실시간 동기화
+  // 최종 targetUid 계산 (우선순위: 쿼리스트링 > 로그인 유저 > 데모)
+  const targetUid = queryUid || (user ? user.uid : "anonymous")
+
   useEffect(() => {
     setMounted(true)
-    
-    const savedProfile = localStorage.getItem("mylink_profile")
-    const savedTags = localStorage.getItem("mylink_tags")
-    const savedThemeId = localStorage.getItem("mylink_theme_id")
+  }, [])
 
-    if (savedProfile) setProfile(JSON.parse(savedProfile))
+  // Firestore 실시간 동기화
+  useEffect(() => {
+    if (!mounted) return
 
-    if (savedTags) {
-      setTags(JSON.parse(savedTags))
-    } else {
-      setTags(defaultTags)
-    }
+    // 1. 프로필 정보 실시간 동기화 (users/{uid} 단일 문서 구조)
+    const profileDocRef = doc(db, "users", targetUid)
+    const unsubscribeProfile = onSnapshot(profileDocRef, async (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data()
+        if (data.profile) setProfile(data.profile)
+        if (data.tags) setTags(data.tags)
+        if (data.themeId) setActiveThemeId(data.themeId)
+      } else {
+        // 프로필 정보가 생성되지 않은 유저인 경우 기본값 자동 Seeding
+        const savedProfile = localStorage.getItem("mylink_profile")
+        const savedTags = localStorage.getItem("mylink_tags")
+        const savedThemeId = localStorage.getItem("mylink_theme_id")
 
-    if (savedThemeId) {
-      setActiveThemeId(savedThemeId)
-    }
+        const initialProfile = savedProfile ? JSON.parse(savedProfile) : {
+          displayName: user?.displayName || "정운학 (Unhak Jeong)",
+          bio: "🚀 마이링크 프론트엔드 리디자인 연구원 | 멋진 인터랙션과 최상의 UX를 설계하는 제품 지향적 개발자입니다. React, Next.js, Rust에 푹 빠져있습니다.",
+          avatarInitials: user?.displayName ? user.displayName.substring(0, 2).toUpperCase() : "JU"
+        }
+        const initialTags = savedTags ? JSON.parse(savedTags) : defaultTags
+        const initialThemeId = savedThemeId || "cyberpunk"
 
-    // Firestore users/anonymous/links 실시간 동기화 및 자동 마이그레이션
-    const q = query(collection(db, "users/anonymous/links"), orderBy("createdAt", "desc"))
-    const unsubscribe = onSnapshot(q, async (snapshot) => {
-      if (snapshot.empty) {
-        // Firestore가 비어 있는 경우 초기 마이그레이션 실행
-        const savedLinks = localStorage.getItem("mylink_links")
-        let initialData: LinkItem[] = dummyLinks
-        
-        if (savedLinks) {
+        // 쓰기 권한이 있는 본인의 프로필 문서이거나 anonymous 데모인 경우 최초 1회 Firestore 생성
+        const canWrite = targetUid === "anonymous" || (user && user.uid === targetUid)
+        if (canWrite) {
           try {
-            initialData = JSON.parse(savedLinks)
+            await setDoc(profileDocRef, {
+              profile: initialProfile,
+              tags: initialTags,
+              themeId: initialThemeId,
+              createdAt: serverTimestamp()
+            }, { merge: true })
           } catch (e) {
-            console.error("Failed to parse saved links from localStorage", e)
+            console.error("Failed to seed initial user profile in Firestore", e)
           }
         }
-        
-        // Firestore로 데이터 업로드
+
+        setProfile(initialProfile)
+        setTags(initialTags)
+        setActiveThemeId(initialThemeId)
+      }
+    }, (error) => {
+      console.error("Firestore Profile Sync Error: ", error)
+    })
+
+    // 2. Links 실시간 동기화 (users/{uid}/links)
+    const linksRef = collection(db, "users", targetUid, "links")
+    const q = query(linksRef, orderBy("createdAt", "desc"))
+    const unsubscribeLinks = onSnapshot(q, async (snapshot) => {
+      if (snapshot.empty && targetUid === "anonymous") {
+        // anonymous 데모가 비어 있는 경우 자동 마이그레이션 실행
         try {
           const batch = writeBatch(db)
-          const linksRef = collection(db, "users/anonymous/links")
-          initialData.forEach((item) => {
+          dummyLinks.forEach((item) => {
             const newDocRef = doc(linksRef)
             batch.set(newDocRef, {
               title: item.title,
@@ -184,7 +224,6 @@ export default function Page() {
             })
           })
           await batch.commit()
-          localStorage.removeItem("mylink_links") // 중복 방지를 위해 제거
         } catch (err) {
           console.error("Migration to Firestore failed", err)
         }
@@ -200,15 +239,15 @@ export default function Page() {
       console.error("Firestore onSnapshot error: ", error)
     })
 
-    // Firestore users/anonymous/socials 실시간 동기화 및 자동 마이그레이션
-    const socialsRef = collection(db, "users/anonymous/socials")
+    // 3. Socials 실시간 동기화 (users/{uid}/socials)
+    const socialsRef = collection(db, "users", targetUid, "socials")
     const unsubscribeSocials = onSnapshot(socialsRef, async (snapshot) => {
-      if (snapshot.empty) {
-        // Firestore가 비어 있는 경우 초기 dummySocials 마이그레이션 실행
+      if (snapshot.empty && targetUid === "anonymous") {
+        // anonymous 데모 소셜 링크 자동 Seeding
         try {
           const batch = writeBatch(db)
           dummySocials.forEach((item) => {
-            const docRef = doc(db, "users/anonymous/socials", item.platform)
+            const docRef = doc(db, "users", targetUid, "socials", item.platform)
             batch.set(docRef, {
               platform: item.platform,
               url: item.url
@@ -225,7 +264,6 @@ export default function Page() {
           url: doc.data().url || "",
         })) as SocialItem[]
 
-        // 순서 고정: dummySocials의 순서대로 정렬
         const order = ['github', 'linkedin', 'twitter', 'youtube', 'instagram']
         const sortedSocials = [...fetchedSocials].sort((a, b) => {
           return order.indexOf(a.platform) - order.indexOf(b.platform)
@@ -237,10 +275,11 @@ export default function Page() {
     })
 
     return () => {
-      unsubscribe()
+      unsubscribeProfile()
+      unsubscribeLinks()
       unsubscribeSocials()
     }
-  }, [])
+  }, [targetUid, mounted, user])
 
   // 활성 프리셋 정보 로드
   const activePreset = themePresets.find(p => p.id === activeThemeId) || themePresets[0]
@@ -312,31 +351,53 @@ export default function Page() {
     )
   }
 
-  return (
-    <main className={`relative flex min-h-svh w-full flex-col items-center justify-start overflow-x-hidden p-4 pb-28 pt-12 sm:pt-20 transition-all duration-700 ease-in-out ${activePreset.bgClass}`}>
-      
-      {/* 1. 세련된 비침해적 플로팅 관리 페이지 기어 버튼 */}
-      <div className="fixed top-6 right-6 z-50 flex items-center group">
-        <button
-          onClick={() => router.push("/mypage")}
-          className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-zinc-900/60 text-zinc-300 shadow-xl backdrop-blur-xl transition-all duration-300 hover:scale-105 hover:border-emerald-500/40 hover:text-emerald-400 cursor-pointer"
-          title="관리자 설정 페이지 이동"
-        >
-          <Settings className="h-5 w-5 transition-transform duration-500 group-hover:rotate-45" />
-        </button>
-        {/* 호버 시 툴팁 슬라이딩 */}
-        <span className="pointer-events-none absolute right-14 scale-0 rounded-lg border border-white/5 bg-zinc-950 px-2.5 py-1 text-[10px] font-bold tracking-wider text-white shadow-2xl backdrop-blur-md transition-all duration-200 group-hover:scale-100 whitespace-nowrap">
-          관리 페이지 이동
-        </span>
-      </div>
+  // 로그인 상태 배너 표시 조건: 쿼리스트링 없고 비로그인 상태이며, 데모 계정을 보여주는 상황
+  const showIntroBanner = !queryUid && !user
 
-      {/* 2. 상단 장식 오라 백라이트 효과 */}
+  return (
+    <main className={`relative flex min-h-svh w-full flex-col items-center justify-start overflow-x-hidden p-4 pb-28 pt-24 sm:pt-32 transition-all duration-700 ease-in-out ${activePreset.bgClass}`}>
+      
+      {/* 고품격 프리미엄 헤더 */}
+      <Header activePreset={activePreset} />
+
+      {/* 상단 장식 오라 백라이트 효과 */}
       <div className={`pointer-events-none absolute top-0 left-1/4 -z-10 h-96 w-96 rounded-full bg-gradient-to-b ${activePreset.auraClass1} blur-3xl`} />
       <div className={`pointer-events-none absolute top-40 right-1/4 -z-10 h-[500px] w-[500px] rounded-full bg-gradient-to-b ${activePreset.auraClass2} blur-3xl`} />
 
-      {/* 3. 메인 링크트리 컨테이너 */}
+      {/* 메인 링크트리 컨테이너 */}
       <div className="flex w-full max-w-md flex-col items-center gap-8 animate-fade-in">
         
+        {/* 로그인 유도 프리미엄 인트로 배너 */}
+        {showIntroBanner && (
+          <div className={`w-full p-4.5 rounded-2xl border transition-all duration-300 flex flex-col gap-3 relative overflow-hidden backdrop-blur-xl ${
+            activePreset.isDark 
+              ? "bg-slate-900/60 border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.3)]" 
+              : "bg-white/80 border-slate-200/80 shadow-[0_8px_32px_rgba(16,185,129,0.05)]"
+          }`}>
+            <div className={`absolute -inset-0.5 rounded-2xl bg-gradient-to-r ${activePreset.primaryBg} opacity-15 blur-sm -z-10`} />
+            
+            <div className="flex items-start gap-2.5">
+              <Sparkles className="h-5 w-5 text-amber-400 flex-shrink-0 mt-0.5 animate-pulse" />
+              <div className="text-left">
+                <h3 className="text-xs font-black tracking-tight text-white dark:text-zinc-100">
+                  나만의 프리미엄 링크 트리를 만드세요
+                </h3>
+                <p className="mt-1 text-[11px] leading-relaxed text-zinc-400 dark:text-zinc-400/90 font-medium">
+                  구글 로그인을 완료하면 1초 만에 개인화된 브랜딩 페이지를 자동으로 무료 개설할 수 있습니다.
+                </p>
+              </div>
+            </div>
+            
+            <button
+              onClick={loginWithGoogle}
+              className={`flex items-center justify-center gap-1.5 py-2 px-4 rounded-xl text-xs font-extrabold text-white ${activePreset.primaryBg} shadow-md transition-all duration-300 hover:brightness-110 active:scale-[0.98] cursor-pointer`}
+            >
+              <span>지금 1초 만에 시작하기</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
+
         {/* 프로필 정보 섹션 */}
         <header className="flex flex-col items-center text-center w-full">
           <div className="relative group">
@@ -345,105 +406,113 @@ export default function Page() {
             
             {/* 프로필 아바타 서클 */}
             <div className="relative flex h-24 w-24 items-center justify-center rounded-full bg-zinc-950 text-3xl font-black tracking-wider text-white shadow-2xl border-2 border-white/15 transition-transform duration-300 hover:scale-105">
-              {profile.avatarInitials}
+              {profile.avatarInitials || "JU"}
             </div>
           </div>
 
           {/* 프로필 이름 */}
           <h1 className="mt-5 text-xl font-black tracking-tight sm:text-2xl">
-            {profile.displayName}
+            {profile.displayName || "이름 정보 없음"}
           </h1>
 
           {/* 프로필 Bio 자기소개 */}
           <div className="mt-3.5 w-full max-w-xs sm:max-w-sm">
             <p className="text-xs leading-relaxed text-zinc-400">
-              {profile.bio}
+              {profile.bio || "아직 작성된 자기소개가 없습니다."}
             </p>
           </div>
 
           {/* 전문 관심 스택 배지 리스트 */}
-          <div className="mt-5 flex flex-wrap justify-center gap-1.5 max-w-sm">
-            {tags.map((tag) => (
-              <span 
-                key={tag} 
-                className={`text-[10px] py-1 px-2.5 rounded-full font-bold select-none transition-transform hover:scale-105 ${activePreset.tagBg}`}
-              >
-                #{tag}
-              </span>
-            ))}
-          </div>
+          {tags.length > 0 && (
+            <div className="mt-5 flex flex-wrap justify-center gap-1.5 max-w-sm">
+              {tags.map((tag) => (
+                <span 
+                  key={tag} 
+                  className={`text-[10px] py-1 px-2.5 rounded-full font-bold select-none transition-transform hover:scale-105 ${activePreset.tagBg}`}
+                >
+                  #{tag}
+                </span>
+              ))}
+            </div>
+          )}
         </header>
 
         {/* 4. 연결 링크 목록 섹션 (순수 뷰어 모드 & 글래스모피즘 디자인) */}
         <section className="flex w-full flex-col gap-4">
-          {links.map((link, index) => {
-            const faviconUrl = getFaviconUrl(link.url, 64)
+          {links.length > 0 ? (
+            links.map((link, index) => {
+              const faviconUrl = getFaviconUrl(link.url, 64)
 
-            return (
-              <div
-                key={link.id}
-                className="group relative w-full"
-                style={{
-                  animationDelay: `${index * 100}ms`,
-                  animationFillMode: "both",
-                }}
-              >
-                {/* 엣지 글로우 라인 장식 */}
-                <div className={`absolute -inset-0.5 rounded-2xl bg-gradient-to-r ${activePreset.primaryBg} opacity-0 group-hover:opacity-40 transition-opacity duration-300 blur-sm -z-10`} />
-
-                {/* 링크 메인 카드 */}
-                <div 
-                  className={`flex items-center gap-3.5 p-4 rounded-2xl transition-all duration-300 ${activePreset.cardClass} ${activePreset.cardHoverGlow} cursor-pointer transform hover:-translate-y-1 hover:scale-[1.02] active:scale-[0.98]`}
-                  onClick={() => {
-                    window.open(link.url, "_blank", "noopener,noreferrer")
+              return (
+                <div
+                  key={link.id}
+                  className="group relative w-full"
+                  style={{
+                    animationDelay: `${index * 100}ms`,
+                    animationFillMode: "both",
                   }}
                 >
-                  
-                  {/* 파비콘 아이콘 컨테이너 */}
-                  <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-white/95 dark:bg-zinc-800/90 p-2.5 shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] border border-white/20 transition-transform duration-300 group-hover:scale-105">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={faviconUrl}
-                      alt={`${link.title} 파비콘`}
-                      className="h-7 w-7 object-contain"
-                      loading="lazy"
-                      onError={(e) => {
-                        const target = e.currentTarget
-                        target.style.display = "none"
-                        const parent = target.parentElement
-                        if (parent) {
-                          const existingFallback = parent.querySelector(".favicon-fallback")
-                          if (existingFallback) existingFallback.remove()
-                          
-                          const fallback = document.createElement("div")
-                          fallback.className = "favicon-fallback flex h-full w-full items-center justify-center text-base font-extrabold text-fuchsia-500 dark:text-cyan-400"
-                          fallback.innerText = link.title ? link.title.substring(0, 1).toUpperCase() : "🔗"
-                          parent.appendChild(fallback)
-                        }
-                      }}
-                    />
-                  </div>
+                  {/* 엣지 글로우 라인 장식 */}
+                  <div className={`absolute -inset-0.5 rounded-2xl bg-gradient-to-r ${activePreset.primaryBg} opacity-0 group-hover:opacity-40 transition-opacity duration-300 blur-sm -z-10`} />
 
-                  {/* 텍스트 타이틀 & URL 정보 */}
-                  <div className="flex-grow text-left overflow-hidden">
-                    <h2 className={`text-[14px] sm:text-[15px] font-black leading-snug tracking-tight transition-colors ${activePreset.primaryText}`}>
-                      {link.title}
-                    </h2>
-                    <p className="mt-1 text-[11px] truncate font-medium text-zinc-400/85 max-w-[210px] sm:max-w-[270px]">
-                      {link.url.replace(/^https?:\/\/(www\.)?/, "")}
-                    </p>
-                  </div>
+                  {/* 링크 메인 카드 */}
+                  <div 
+                    className={`flex items-center gap-3.5 p-4 rounded-2xl transition-all duration-300 ${activePreset.cardClass} ${activePreset.cardHoverGlow} cursor-pointer transform hover:-translate-y-1 hover:scale-[1.02] active:scale-[0.98]`}
+                    onClick={() => {
+                      window.open(link.url, "_blank", "noopener,noreferrer")
+                    }}
+                  >
+                    
+                    {/* 파비콘 아이콘 컨테이너 */}
+                    <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-white/95 dark:bg-zinc-800/90 p-2.5 shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] border border-white/20 transition-transform duration-300 group-hover:scale-105">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={faviconUrl}
+                        alt={`${link.title} 파비콘`}
+                        className="h-7 w-7 object-contain"
+                        loading="lazy"
+                        onError={(e) => {
+                          const target = e.currentTarget
+                          target.style.display = "none"
+                          const parent = target.parentElement
+                          if (parent) {
+                            const existingFallback = parent.querySelector(".favicon-fallback")
+                            if (existingFallback) existingFallback.remove()
+                            
+                            const fallback = document.createElement("div")
+                            fallback.className = "favicon-fallback flex h-full w-full items-center justify-center text-base font-extrabold text-fuchsia-500 dark:text-cyan-400"
+                            fallback.innerText = link.title ? link.title.substring(0, 1).toUpperCase() : "🔗"
+                            parent.appendChild(fallback)
+                          }
+                        }}
+                      />
+                    </div>
 
-                  {/* 우측 앰비언트 액션 아이콘 */}
-                  <div className="flex-shrink-0 flex items-center pl-1">
-                    <span className={`text-zinc-400 transition-all duration-300 group-hover:translate-x-0.5 ${activePreset.accentText}`}>
-                      <ExternalLink className="h-4 w-4" />
-                    </span>
+                    {/* 텍스트 타이틀 & URL 정보 */}
+                    <div className="flex-grow text-left overflow-hidden">
+                      <h2 className={`text-[14px] sm:text-[15px] font-black leading-snug tracking-tight transition-colors ${activePreset.primaryText}`}>
+                        {link.title}
+                      </h2>
+                      <p className="mt-1 text-[11px] truncate font-medium text-zinc-400/85 max-w-[210px] sm:max-w-[270px]">
+                        {link.url.replace(/^https?:\/\/(www\.)?/, "")}
+                      </p>
+                    </div>
+
+                    {/* 우측 앰비언트 액션 아이콘 */}
+                    <div className="flex-shrink-0 flex items-center pl-1">
+                      <span className={`text-zinc-400 transition-all duration-300 group-hover:translate-x-0.5 ${activePreset.accentText}`}>
+                        <ExternalLink className="h-4 w-4" />
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )
-          })}
+              )
+            })
+          ) : (
+            <div className={`p-8 rounded-2xl border text-center transition-all ${activePreset.cardClass}`}>
+              <p className="text-xs font-semibold text-zinc-500">등록된 마이링크가 아직 없습니다.</p>
+            </div>
+          )}
         </section>
 
         {/* 푸터 영역 */}
