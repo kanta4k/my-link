@@ -2,12 +2,12 @@
 
 import React, { useEffect, useState, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
-import { useTheme } from "next-themes"
 import { ExternalLink, Sparkles, Globe, Mail, ArrowRight, LayoutTemplate, Edit3, BadgePlus } from "lucide-react"
 import { dummyLinks, dummySocials, defaultTags, getFaviconUrl, LinkItem, SocialItem } from "@/Data/links"
 import { db } from "@/lib/firebase"
 import { useAuth } from "@/context/AuthContext"
 import Header from "@/components/Header"
+import { useTheme } from "@/components/theme-provider"
 import { Card } from "@/components/ui/card"
 import { 
   collection, 

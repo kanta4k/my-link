@@ -4,8 +4,8 @@ import React, { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/context/AuthContext"
 import { 
-  Sparkles, LogOut, Settings, Eye, User, Mail, 
-  Link2, Share2, Palette, ChevronDown, ChevronUp, Activity
+  Sparkles, LogOut, Settings, Eye, Mail, 
+  Link2, Share2, Palette, ChevronDown, ChevronUp, Home
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { db } from "@/lib/firebase"
@@ -108,9 +108,10 @@ const themePresets: ThemePreset[] = [
 interface HeaderProps {
   activePreset?: ThemePreset
   isDashboard?: boolean
+  isPublicProfile?: boolean
 }
 
-export default function Header({ activePreset, isDashboard = false }: HeaderProps) {
+export default function Header({ activePreset, isDashboard = false, isPublicProfile = false }: HeaderProps) {
   const router = useRouter()
   const { user, loading, loginWithGoogle, logout } = useAuth()
 
@@ -123,6 +124,7 @@ export default function Header({ activePreset, isDashboard = false }: HeaderProp
   const [activeSocialCount, setActiveSocialCount] = useState(0)
   const [userThemeId, setUserThemeId] = useState("glass-light")
   const [customProfileName, setCustomProfileName] = useState("")
+  const [customUsername, setCustomUsername] = useState("")
 
   // 기본 프리셋 백업 (테마 미지정 시)
   const primaryBg = activePreset?.primaryBg || "bg-gradient-to-r from-fuchsia-500 to-cyan-500"
@@ -135,6 +137,7 @@ export default function Header({ activePreset, isDashboard = false }: HeaderProp
       setActiveSocialCount(0)
       setUserThemeId("glass-light")
       setCustomProfileName("")
+      setCustomUsername("")
       return
     }
 
@@ -145,6 +148,9 @@ export default function Header({ activePreset, isDashboard = false }: HeaderProp
         const data = snapshot.data()
         if (data.profile?.displayName) {
           setCustomProfileName(data.profile.displayName)
+        }
+        if (data.profile?.username) {
+          setCustomUsername(data.profile.username)
         }
         if (data.themeId) {
           setUserThemeId(data.themeId)
@@ -160,6 +166,9 @@ export default function Header({ activePreset, isDashboard = false }: HeaderProp
         const data = snapshot.data()
         if (data.displayName) {
           setCustomProfileName(data.displayName)
+        }
+        if (data.username) {
+          setCustomUsername(data.username)
         }
       }
     }, (error) => {
@@ -215,6 +224,7 @@ export default function Header({ activePreset, isDashboard = false }: HeaderProp
 
   // 현재 매핑된 프리셋 정보 구하기
   const currentPreset = themePresets.find(p => p.id === userThemeId) || themePresets[0]
+  const publicPageHref = customUsername ? `/${encodeURIComponent(customUsername)}` : "/mypage"
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 px-4 py-3 sm:px-6">
@@ -242,6 +252,22 @@ export default function Header({ activePreset, isDashboard = false }: HeaderProp
 
         {/* 2. 유저 인증 상태 컨트롤 (우측) */}
         <div className="flex items-center gap-2" ref={dropdownRef}>
+          {isPublicProfile && (
+            <Button
+              onClick={() => router.push("/")}
+              variant="outline"
+              size="sm"
+              className={`flex items-center gap-1.5 rounded-xl px-3 text-[11px] font-extrabold transition-all hover:scale-105 active:scale-[0.98] cursor-pointer ${
+                isDark 
+                  ? "bg-zinc-900/60 border-white/10 hover:border-cyan-500/40 hover:bg-zinc-950 text-white" 
+                  : "bg-white border-slate-200 hover:border-emerald-500/40 hover:bg-slate-50 text-slate-700"
+              }`}
+            >
+              <Home className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">메인</span>
+            </Button>
+          )}
+
           {loading ? (
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-t-transparent border-fuchsia-500" />
           ) : !user ? (
@@ -278,6 +304,23 @@ export default function Header({ activePreset, isDashboard = false }: HeaderProp
             </Button>
           ) : (
             // 로그인 상태: 프로필 드롭다운 트리거 아바타 영역
+            <>
+            {!isDashboard && (
+              <Button
+                onClick={() => router.push(publicPageHref)}
+                variant="outline"
+                size="sm"
+                className={`hidden sm:flex items-center gap-1.5 rounded-xl px-3 text-[11px] font-extrabold transition-all hover:scale-105 active:scale-[0.98] cursor-pointer ${
+                  isDark 
+                    ? "bg-zinc-900/60 border-white/10 hover:border-fuchsia-500/40 hover:bg-zinc-950 text-white" 
+                    : "bg-white border-slate-200 hover:border-emerald-500/40 hover:bg-slate-50 text-slate-700"
+                }`}
+              >
+                <Eye className="h-3.5 w-3.5" />
+                <span>내 페이지</span>
+              </Button>
+            )}
+
             <div className="relative">
               <div 
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
@@ -404,11 +447,38 @@ export default function Header({ activePreset, isDashboard = false }: HeaderProp
 
                   {/* D. 퀵 내비게이션 메뉴 */}
                   <div className="flex flex-col gap-1">
-                    {isDashboard ? (
+                    {isPublicProfile ? (
+                      <>
+                        <button
+                          onClick={() => {
+                            setIsDropdownOpen(false)
+                            router.push("/")
+                          }}
+                          className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] font-extrabold transition-all hover:scale-[1.01] active:scale-[0.99] text-white ${primaryBg} shadow-md hover:brightness-110 cursor-pointer`}
+                        >
+                          <Home className="h-3.5 w-3.5" />
+                          <span>메인페이지</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setIsDropdownOpen(false)
+                            router.push("/mypage")
+                          }}
+                          className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] font-extrabold transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer ${
+                            isDark
+                              ? "bg-zinc-900/60 text-zinc-200 hover:bg-zinc-800"
+                              : "bg-slate-100 text-slate-800 hover:bg-slate-200"
+                          }`}
+                        >
+                          <Settings className="h-3.5 w-3.5" />
+                          <span>마이페이지</span>
+                        </button>
+                      </>
+                    ) : isDashboard ? (
                       <button
                         onClick={() => {
                           setIsDropdownOpen(false)
-                          router.push("/")
+                          router.push(publicPageHref)
                         }}
                         className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] font-extrabold transition-all hover:scale-[1.01] active:scale-[0.99] text-white ${primaryBg} shadow-md hover:brightness-110 cursor-pointer`}
                       >
@@ -416,16 +486,32 @@ export default function Header({ activePreset, isDashboard = false }: HeaderProp
                         <span>내 퍼블릭 페이지 보기</span>
                       </button>
                     ) : (
-                      <button
-                        onClick={() => {
-                          setIsDropdownOpen(false)
-                          router.push("/mypage")
-                        }}
-                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] font-extrabold transition-all hover:scale-[1.01] active:scale-[0.99] text-white ${primaryBg} shadow-md hover:brightness-110 cursor-pointer`}
-                      >
-                        <Settings className="h-3.5 w-3.5" />
-                        <span>마이페이지</span>
-                      </button>
+                      <>
+                        <button
+                          onClick={() => {
+                            setIsDropdownOpen(false)
+                            router.push(publicPageHref)
+                          }}
+                          className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] font-extrabold transition-all hover:scale-[1.01] active:scale-[0.99] text-white ${primaryBg} shadow-md hover:brightness-110 cursor-pointer`}
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          <span>내 페이지 바로가기</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setIsDropdownOpen(false)
+                            router.push("/mypage")
+                          }}
+                          className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] font-extrabold transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer ${
+                            isDark
+                              ? "bg-zinc-900/60 text-zinc-200 hover:bg-zinc-800"
+                              : "bg-slate-100 text-slate-800 hover:bg-slate-200"
+                          }`}
+                        >
+                          <Settings className="h-3.5 w-3.5" />
+                          <span>마이페이지</span>
+                        </button>
+                      </>
                     )}
                   </div>
 
@@ -449,6 +535,7 @@ export default function Header({ activePreset, isDashboard = false }: HeaderProp
                 </div>
               )}
             </div>
+            </>
           )}
         </div>
       </div>
