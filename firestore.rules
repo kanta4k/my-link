@@ -10,6 +10,18 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    function currentClickCount() {
+      return resource.data.keys().hasAny(['clickCount']) && resource.data.clickCount is int
+        ? resource.data.clickCount
+        : 0;
+    }
+
+    function isClickCountIncrement() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['clickCount'])
+        && request.resource.data.clickCount is int
+        && request.resource.data.clickCount == currentClickCount() + 1;
+    }
+
     // Public profile lookup and settings used by the app.
     // Anyone can read public pages, but only the owner can write their user doc.
     match /users/{userId} {
@@ -25,7 +37,8 @@ service cloud.firestore {
       // Public link list rendered on /[displayname].
       match /links/{linkId} {
         allow read: if true;
-        allow create, update, delete: if isOwner(userId);
+        allow create, delete: if isOwner(userId);
+        allow update: if isOwner(userId) || isClickCountIncrement();
       }
 
       // Public social links shown on the profile dock/header stats.

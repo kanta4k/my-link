@@ -1,4 +1,4 @@
-import { ExternalLink, Link2 } from "lucide-react"
+import { Link2 } from "lucide-react"
 import { notFound } from "next/navigation"
 import {
   collection,
@@ -10,8 +10,8 @@ import {
 } from "firebase/firestore"
 
 import Header from "@/components/Header"
+import TrackedLinkCard from "@/components/TrackedLinkCard"
 import { Card } from "@/components/ui/card"
-import { getFaviconUrl } from "@/Data/links"
 import { db } from "@/lib/firebase"
 
 interface PublicProfile {
@@ -100,11 +100,13 @@ async function getPublicPage(displayname: string) {
     return {
       id: linkDoc.id,
       title: data.title || "",
-      url: normalizeUrl(data.url || ""),
+        url: normalizeUrl(data.url || ""),
+      clickCount: typeof data.clickCount === "number" ? data.clickCount : 0,
     }
   })
 
   return {
+    userId,
     profile,
     links,
     tags: Array.isArray(userData.tags) ? (userData.tags as string[]) : [],
@@ -125,7 +127,7 @@ export default async function DisplayNamePage({
     notFound()
   }
 
-  const { profile, links, tags, themeId } = pageData
+  const { userId, profile, links, tags, themeId } = pageData
   const theme = themeClasses[themeId] ?? themeClasses["glass-light"]
   const displayName = profile.displayName || profile.username || decodedDisplayName
   const initials =
@@ -175,37 +177,16 @@ export default async function DisplayNamePage({
         <section className="flex w-full flex-col gap-4">
           {links.length > 0 ? (
             links.map((link) => (
-              <a
+              <TrackedLinkCard
                 key={link.id}
-                href={link.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group block"
-              >
-                <Card
-                  className={`flex flex-row items-center gap-3.5 rounded-2xl p-4 shadow-xl backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 ${theme.card}`}
-                >
-                  <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl border border-white/20 bg-white/95 p-2.5 shadow-inner">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={getFaviconUrl(link.url, 64)}
-                      alt=""
-                      className="h-7 w-7 object-contain"
-                    />
-                  </div>
-
-                  <div className="min-w-0 flex-1 text-left">
-                    <h2 className={`truncate text-sm font-black ${theme.accent}`}>
-                      {link.title || "제목 없는 링크"}
-                    </h2>
-                    <p className="mt-1 truncate text-xs font-medium text-zinc-500">
-                      {link.url.replace(/^https?:\/\/(www\.)?/, "")}
-                    </p>
-                  </div>
-
-                  <ExternalLink className="h-4 w-4 flex-shrink-0 text-zinc-400 transition-transform group-hover:translate-x-0.5" />
-                </Card>
-              </a>
+                userId={userId}
+                linkId={link.id}
+                title={link.title}
+                url={link.url}
+                cardClass={theme.card}
+                primaryText={theme.accent}
+                accentText="text-zinc-400"
+              />
             ))
           ) : (
             <Card className={`items-center rounded-2xl p-8 text-center ${theme.card}`}>

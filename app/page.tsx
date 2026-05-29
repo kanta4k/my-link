@@ -2,12 +2,13 @@
 
 import React, { useEffect, useState, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
-import { ExternalLink, Sparkles, Globe, Mail, ArrowRight, LayoutTemplate, Edit3, BadgePlus } from "lucide-react"
-import { dummyLinks, dummySocials, defaultTags, getFaviconUrl, LinkItem, SocialItem } from "@/Data/links"
+import { Sparkles, Globe, Mail, ArrowRight, LayoutTemplate, Edit3, BadgePlus } from "lucide-react"
+import { dummyLinks, dummySocials, defaultTags, LinkItem, SocialItem } from "@/Data/links"
 import { db } from "@/lib/firebase"
 import { useAuth } from "@/context/AuthContext"
 import Header from "@/components/Header"
 import { useTheme } from "@/components/theme-provider"
+import TrackedLinkCard from "@/components/TrackedLinkCard"
 import { Card } from "@/components/ui/card"
 import { 
   collection, 
@@ -232,6 +233,7 @@ function LinkTreeContent() {
             batch.set(newDocRef, {
               title: item.title,
               url: item.url,
+              clickCount: 0,
               createdAt: serverTimestamp()
             })
           })
@@ -244,6 +246,7 @@ function LinkTreeContent() {
           id: doc.id,
           title: doc.data().title || "",
           url: doc.data().url || "",
+          clickCount: typeof doc.data().clickCount === "number" ? doc.data().clickCount : 0,
         }))
         setLinks(fetchedLinks)
       }
@@ -538,8 +541,6 @@ function LinkTreeContent() {
             <section className="flex w-full flex-col gap-4">
               {links.length > 0 ? (
                 links.map((link, index) => {
-                  const faviconUrl = getFaviconUrl(link.url, 64)
-
                   return (
                     <div
                       key={link.id}
@@ -549,59 +550,15 @@ function LinkTreeContent() {
                         animationFillMode: "both",
                       }}
                     >
-                      {/* 엣지 글로우 라인 장식 */}
-                      <div className={`absolute -inset-0.5 rounded-2xl bg-gradient-to-r ${activePreset.primaryBg} opacity-0 group-hover:opacity-40 transition-opacity duration-300 blur-sm -z-10`} />
-
-                      {/* 링크 메인 카드 */}
-                      <div 
-                        className={`flex items-center gap-3.5 p-4 rounded-2xl transition-all duration-300 ${activePreset.cardClass} ${activePreset.cardHoverGlow} cursor-pointer transform hover:-translate-y-1 hover:scale-[1.02] active:scale-[0.98]`}
-                        onClick={() => {
-                          window.open(link.url, "_blank", "noopener,noreferrer")
-                        }}
-                      >
-                        
-                        {/* 파비콘 아이콘 컨테이너 */}
-                        <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-white/95 dark:bg-zinc-800/90 p-2.5 shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] border border-white/20 transition-transform duration-300 group-hover:scale-105">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={faviconUrl}
-                            alt={`${link.title} 파비콘`}
-                            className="h-7 w-7 object-contain"
-                            loading="lazy"
-                            onError={(e) => {
-                              const target = e.currentTarget
-                              target.style.display = "none"
-                              const parent = target.parentElement
-                              if (parent) {
-                                const existingFallback = parent.querySelector(".favicon-fallback")
-                                if (existingFallback) existingFallback.remove()
-                                
-                                const fallback = document.createElement("div")
-                                fallback.className = "favicon-fallback flex h-full w-full items-center justify-center text-base font-extrabold text-fuchsia-500 dark:text-cyan-400"
-                                fallback.innerText = link.title ? link.title.substring(0, 1).toUpperCase() : "🔗"
-                                parent.appendChild(fallback)
-                              }
-                            }}
-                          />
-                        </div>
-
-                        {/* 텍스트 타이틀 & URL 정보 */}
-                        <div className="flex-grow text-left overflow-hidden">
-                          <h2 className={`text-[14px] sm:text-[15px] font-black leading-snug tracking-tight transition-colors ${activePreset.primaryText}`}>
-                            {link.title}
-                          </h2>
-                          <p className="mt-1 text-[11px] truncate font-medium text-zinc-400/85 max-w-[210px] sm:max-w-[270px]">
-                            {link.url.replace(/^https?:\/\/(www\.)?/, "")}
-                          </p>
-                        </div>
-
-                        {/* 우측 앰비언트 액션 아이콘 */}
-                        <div className="flex-shrink-0 flex items-center pl-1">
-                          <span className={`text-zinc-400 transition-all duration-300 group-hover:translate-x-0.5 ${activePreset.accentText}`}>
-                            <ExternalLink className="h-4 w-4" />
-                          </span>
-                        </div>
-                      </div>
+                      <TrackedLinkCard
+                        userId={targetUid}
+                        linkId={link.id}
+                        title={link.title}
+                        url={link.url}
+                        cardClass={`${activePreset.cardClass} ${activePreset.cardHoverGlow} transform hover:scale-[1.02] active:scale-[0.98]`}
+                        primaryText={activePreset.primaryText}
+                        accentText={activePreset.accentText}
+                      />
                     </div>
                   )
                 })

@@ -8,6 +8,7 @@ export interface LinkItem {
   title: string;
   url: string;
   icon?: string;
+  clickCount?: number;
 }
 
 export interface SocialItem {
