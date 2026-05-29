@@ -3,7 +3,8 @@
 import React from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/context/AuthContext"
-import { Sparkles, LogOut, Settings, Eye, Layout } from "lucide-react"
+import { Sparkles, LogOut, Settings, Eye } from "lucide-react"
+import { Button } from "@/components/ui/button"
 
 interface ThemePreset {
   id: string;
@@ -31,7 +32,6 @@ export default function Header({ activePreset, isDashboard = false }: HeaderProp
   const { user, loading, loginWithGoogle, logout } = useAuth()
 
   // 기본 프리셋 백업 (테마 미지정 시)
-  const primaryText = activePreset?.primaryText || "text-fuchsia-400"
   const primaryBg = activePreset?.primaryBg || "bg-gradient-to-r from-fuchsia-500 to-cyan-500"
   const isDark = activePreset ? activePreset.isDark : true
 
@@ -64,10 +64,12 @@ export default function Header({ activePreset, isDashboard = false }: HeaderProp
           {loading ? (
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-t-transparent border-fuchsia-500" />
           ) : !user ? (
-            // 비로그인 상태: 구글 로그인 버튼
-            <button
+            // 비로그인 상태: 구글 로그인 버튼 (Shadcn UI Button 활용)
+            <Button
               onClick={loginWithGoogle}
-              className={`relative flex items-center gap-2 px-3.5 py-1.5 rounded-xl border text-xs font-extrabold transition-all duration-300 cursor-pointer shadow-md hover:scale-105 active:scale-[0.98] ${
+              variant="outline"
+              size="lg"
+              className={`relative flex items-center gap-2 rounded-xl text-xs font-extrabold transition-all duration-300 hover:scale-105 active:scale-[0.98] cursor-pointer shadow-md ${
                 isDark 
                   ? "bg-zinc-900/60 border-white/10 hover:border-fuchsia-500/40 hover:bg-zinc-950 text-white" 
                   : "bg-white border-slate-200 hover:border-emerald-500/40 hover:bg-slate-50 text-slate-700"
@@ -93,7 +95,7 @@ export default function Header({ activePreset, isDashboard = false }: HeaderProp
                 />
               </svg>
               <span>구글로 시작하기</span>
-            </button>
+            </Button>
           ) : (
             // 로그인 상태: 사용자 아바타 및 동작 버튼
             <div className="flex items-center gap-3">
@@ -118,33 +120,37 @@ export default function Header({ activePreset, isDashboard = false }: HeaderProp
                 </span>
               </div>
 
-              {/* 페이지 이동 퀵액션 */}
+              {/* 페이지 이동 퀵액션 (Shadcn UI Button 활용) */}
               {isDashboard ? (
                 // 대시보드에서는 '내 페이지 보기' 버튼
-                <button
+                <Button
                   onClick={() => router.push("/")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-extrabold text-white ${primaryBg} rounded-xl shadow-md hover:brightness-110 transition-all cursor-pointer hover:scale-105 active:scale-[0.98]`}
+                  size="lg"
+                  className={`flex items-center gap-1.5 text-xs font-extrabold text-white ${primaryBg} rounded-xl shadow-md hover:brightness-110 transition-all cursor-pointer hover:scale-105 active:scale-[0.98]`}
                   title="내 퍼블릭 링크 보러가기"
                 >
                   <Eye className="h-4 w-4" />
                   <span className="hidden xs:inline">페이지 보기</span>
-                </button>
+                </Button>
               ) : (
-                // 퍼블릭 페이지에서는 '관리자' 버튼
-                <button
+                // 퍼블릭 페이지에서는 '설정 페이지' 버튼
+                <Button
                   onClick={() => router.push("/mypage")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-extrabold text-white ${primaryBg} rounded-xl shadow-md hover:brightness-110 transition-all cursor-pointer hover:scale-105 active:scale-[0.98]`}
-                  title="관리 센터 이동"
+                  size="lg"
+                  className={`flex items-center gap-1.5 text-xs font-extrabold text-white ${primaryBg} rounded-xl shadow-md hover:brightness-110 transition-all cursor-pointer hover:scale-105 active:scale-[0.98]`}
+                  title="설정 페이지 이동"
                 >
                   <Settings className="h-4 w-4" />
-                  <span className="hidden xs:inline">관리 센터</span>
-                </button>
+                  <span className="hidden xs:inline">설정 페이지</span>
+                </Button>
               )}
 
-              {/* 로그아웃 버튼 */}
-              <button
+              {/* 로그아웃 버튼 (Shadcn UI Button 활용) */}
+              <Button
                 onClick={logout}
-                className={`p-2 rounded-xl border transition-all cursor-pointer hover:scale-105 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 ${
+                variant="outline"
+                size="icon"
+                className={`rounded-xl transition-all cursor-pointer hover:scale-105 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 ${
                   isDark 
                     ? "bg-zinc-900/60 border-white/10 text-zinc-400" 
                     : "bg-white border-slate-200 text-slate-500"
@@ -152,7 +158,7 @@ export default function Header({ activePreset, isDashboard = false }: HeaderProp
                 title="로그아웃"
               >
                 <LogOut className="h-4 w-4" />
-              </button>
+              </Button>
             </div>
           )}
         </div>

@@ -3,11 +3,12 @@
 import React, { useEffect, useState, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import { useTheme } from "next-themes"
-import { ExternalLink, Sparkles, Globe, Mail, ArrowRight } from "lucide-react"
+import { ExternalLink, Sparkles, Globe, Mail, ArrowRight, LayoutTemplate, Edit3, BadgePlus } from "lucide-react"
 import { dummyLinks, dummySocials, defaultTags, getFaviconUrl, LinkItem, SocialItem } from "@/Data/links"
 import { db } from "@/lib/firebase"
 import { useAuth } from "@/context/AuthContext"
 import Header from "@/components/Header"
+import { Card } from "@/components/ui/card"
 import { 
   collection, 
   onSnapshot, 
@@ -137,7 +138,7 @@ function LinkTreeContent() {
   const queryUid = searchParams.get("uid")
 
   const [mounted, setMounted] = useState(false)
-  const [activeThemeId, setActiveThemeId] = useState<string>("cyberpunk")
+  const [activeThemeId, setActiveThemeId] = useState<string>("glass-light")
   
   // 프로필 정보 상태
   const [profile, setProfile] = useState({
@@ -182,7 +183,7 @@ function LinkTreeContent() {
           avatarInitials: user?.displayName ? user.displayName.substring(0, 2).toUpperCase() : "JU"
         }
         const initialTags = savedTags ? JSON.parse(savedTags) : defaultTags
-        const initialThemeId = savedThemeId || "cyberpunk"
+        const initialThemeId = savedThemeId || "glass-light"
 
         // 쓰기 권한이 있는 본인의 프로필 문서이거나 anonymous 데모인 경우 최초 1회 Firestore 생성
         const canWrite = targetUid === "anonymous" || (user && user.uid === targetUid)
@@ -367,166 +368,251 @@ function LinkTreeContent() {
       {/* 메인 링크트리 컨테이너 */}
       <div className="flex w-full max-w-md flex-col items-center gap-8 animate-fade-in">
         
-        {/* 로그인 유도 프리미엄 인트로 배너 */}
-        {showIntroBanner && (
-          <div className={`w-full p-4.5 rounded-2xl border transition-all duration-300 flex flex-col gap-3 relative overflow-hidden backdrop-blur-xl ${
-            activePreset.isDark 
-              ? "bg-slate-900/60 border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.3)]" 
-              : "bg-white/80 border-slate-200/80 shadow-[0_8px_32px_rgba(16,185,129,0.05)]"
-          }`}>
-            <div className={`absolute -inset-0.5 rounded-2xl bg-gradient-to-r ${activePreset.primaryBg} opacity-15 blur-sm -z-10`} />
-            
-            <div className="flex items-start gap-2.5">
-              <Sparkles className="h-5 w-5 text-amber-400 flex-shrink-0 mt-0.5 animate-pulse" />
-              <div className="text-left">
-                <h3 className="text-xs font-black tracking-tight text-white dark:text-zinc-100">
-                  나만의 프리미엄 링크 트리를 만드세요
-                </h3>
-                <p className="mt-1 text-[11px] leading-relaxed text-zinc-400 dark:text-zinc-400/90 font-medium">
-                  구글 로그인을 완료하면 1초 만에 개인화된 브랜딩 페이지를 자동으로 무료 개설할 수 있습니다.
-                </p>
+        {showIntroBanner ? (
+          // ==================== [CASE A] 비로그인 첫 방문자 화면 ====================
+          <>
+            {/* 로그인 유도 프리미엄 인트로 배너 */}
+            <div className={`w-full p-4.5 rounded-2xl border transition-all duration-300 flex flex-col gap-3 relative overflow-hidden backdrop-blur-xl ${
+              activePreset.isDark 
+                ? "bg-slate-900/60 border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.3)]" 
+                : "bg-white/80 border-slate-200/80 shadow-[0_8px_32px_rgba(16,185,129,0.05)]"
+            }`}>
+              <div className={`absolute -inset-0.5 rounded-2xl bg-gradient-to-r ${activePreset.primaryBg} opacity-15 blur-sm -z-10`} />
+              
+              <div className="flex items-start gap-2.5">
+                <Sparkles className="h-5 w-5 text-amber-400 flex-shrink-0 mt-0.5 animate-pulse" />
+                <div className="text-left">
+                  <h3 className="text-xs font-black tracking-tight text-slate-800 dark:text-zinc-100">
+                    나만의 프리미엄 링크 트리를 만드세요
+                  </h3>
+                  <p className="mt-1 text-[11px] leading-relaxed text-slate-500 dark:text-zinc-400/90 font-medium">
+                    구글 로그인을 완료하면 1초 만에 개인화된 브랜딩 페이지를 자동으로 무료 개설할 수 있습니다.
+                  </p>
+                </div>
               </div>
+              
+              <button
+                onClick={loginWithGoogle}
+                className={`flex items-center justify-center gap-1.5 py-2 px-4 rounded-xl text-xs font-extrabold text-white ${activePreset.primaryBg} shadow-md transition-all duration-300 hover:brightness-110 active:scale-[0.98] cursor-pointer`}
+              >
+                <span>지금 1초 만에 시작하기</span>
+                <ArrowRight className="h-3.5 w-3.5" />
+              </button>
             </div>
-            
-            <button
-              onClick={loginWithGoogle}
-              className={`flex items-center justify-center gap-1.5 py-2 px-4 rounded-xl text-xs font-extrabold text-white ${activePreset.primaryBg} shadow-md transition-all duration-300 hover:brightness-110 active:scale-[0.98] cursor-pointer`}
-            >
-              <span>지금 1초 만에 시작하기</span>
-              <ArrowRight className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        )}
 
-        {/* 프로필 정보 섹션 */}
-        <header className="flex flex-col items-center text-center w-full">
-          <div className="relative group">
-            {/* 프로필 외곽 다이내믹 그라데이션 광원 */}
-            <div className={`absolute -inset-1 rounded-full ${activePreset.primaryBg} opacity-50 blur-md group-hover:opacity-95 group-hover:blur-xl transition duration-700`} />
-            
-            {/* 프로필 아바타 서클 */}
-            <div className="relative flex h-24 w-24 items-center justify-center rounded-full bg-zinc-950 text-3xl font-black tracking-wider text-white shadow-2xl border-2 border-white/15 transition-transform duration-300 hover:scale-105">
-              {profile.avatarInitials || "JU"}
-            </div>
-          </div>
+            {/* 로그인 후 화면 구성 및 기능 설명 카드 */}
+            <Card className={`w-full p-5.5 backdrop-blur-xl border flex flex-col gap-5 text-left transition-all duration-300 ${activePreset.cardClass}`}>
+              <div className="flex items-center gap-2 border-b border-black/10 dark:border-white/10 pb-3">
+                <LayoutTemplate className={`h-4.5 w-4.5 ${activePreset.primaryText}`} />
+                <h3 className="text-xs sm:text-sm font-black tracking-wide text-slate-800 dark:text-zinc-100">
+                  로그인 이후 사용할 수 있는 핵심 화면 구성 & 기능
+                </h3>
+              </div>
 
-          {/* 프로필 이름 */}
-          <h1 className="mt-5 text-xl font-black tracking-tight sm:text-2xl">
-            {profile.displayName || "이름 정보 없음"}
-          </h1>
-
-          {/* 프로필 Bio 자기소개 */}
-          <div className="mt-3.5 w-full max-w-xs sm:max-w-sm">
-            <p className="text-xs leading-relaxed text-zinc-400">
-              {profile.bio || "아직 작성된 자기소개가 없습니다."}
-            </p>
-          </div>
-
-          {/* 전문 관심 스택 배지 리스트 */}
-          {tags.length > 0 && (
-            <div className="mt-5 flex flex-wrap justify-center gap-1.5 max-w-sm">
-              {tags.map((tag) => (
-                <span 
-                  key={tag} 
-                  className={`text-[10px] py-1 px-2.5 rounded-full font-bold select-none transition-transform hover:scale-105 ${activePreset.tagBg}`}
-                >
-                  #{tag}
-                </span>
-              ))}
-            </div>
-          )}
-        </header>
-
-        {/* 4. 연결 링크 목록 섹션 (순수 뷰어 모드 & 글래스모피즘 디자인) */}
-        <section className="flex w-full flex-col gap-4">
-          {links.length > 0 ? (
-            links.map((link, index) => {
-              const faviconUrl = getFaviconUrl(link.url, 64)
-
-              return (
-                <div
-                  key={link.id}
-                  className="group relative w-full"
-                  style={{
-                    animationDelay: `${index * 100}ms`,
-                    animationFillMode: "both",
-                  }}
-                >
-                  {/* 엣지 글로우 라인 장식 */}
-                  <div className={`absolute -inset-0.5 rounded-2xl bg-gradient-to-r ${activePreset.primaryBg} opacity-0 group-hover:opacity-40 transition-opacity duration-300 blur-sm -z-10`} />
-
-                  {/* 링크 메인 카드 */}
-                  <div 
-                    className={`flex items-center gap-3.5 p-4 rounded-2xl transition-all duration-300 ${activePreset.cardClass} ${activePreset.cardHoverGlow} cursor-pointer transform hover:-translate-y-1 hover:scale-[1.02] active:scale-[0.98]`}
-                    onClick={() => {
-                      window.open(link.url, "_blank", "noopener,noreferrer")
-                    }}
-                  >
-                    
-                    {/* 파비콘 아이콘 컨테이너 */}
-                    <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-white/95 dark:bg-zinc-800/90 p-2.5 shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] border border-white/20 transition-transform duration-300 group-hover:scale-105">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={faviconUrl}
-                        alt={`${link.title} 파비콘`}
-                        className="h-7 w-7 object-contain"
-                        loading="lazy"
-                        onError={(e) => {
-                          const target = e.currentTarget
-                          target.style.display = "none"
-                          const parent = target.parentElement
-                          if (parent) {
-                            const existingFallback = parent.querySelector(".favicon-fallback")
-                            if (existingFallback) existingFallback.remove()
-                            
-                            const fallback = document.createElement("div")
-                            fallback.className = "favicon-fallback flex h-full w-full items-center justify-center text-base font-extrabold text-fuchsia-500 dark:text-cyan-400"
-                            fallback.innerText = link.title ? link.title.substring(0, 1).toUpperCase() : "🔗"
-                            parent.appendChild(fallback)
-                          }
-                        }}
-                      />
-                    </div>
-
-                    {/* 텍스트 타이틀 & URL 정보 */}
-                    <div className="flex-grow text-left overflow-hidden">
-                      <h2 className={`text-[14px] sm:text-[15px] font-black leading-snug tracking-tight transition-colors ${activePreset.primaryText}`}>
-                        {link.title}
-                      </h2>
-                      <p className="mt-1 text-[11px] truncate font-medium text-zinc-400/85 max-w-[210px] sm:max-w-[270px]">
-                        {link.url.replace(/^https?:\/\/(www\.)?/, "")}
-                      </p>
-                    </div>
-
-                    {/* 우측 앰비언트 액션 아이콘 */}
-                    <div className="flex-shrink-0 flex items-center pl-1">
-                      <span className={`text-zinc-400 transition-all duration-300 group-hover:translate-x-0.5 ${activePreset.accentText}`}>
-                        <ExternalLink className="h-4 w-4" />
-                      </span>
-                    </div>
+              <div className="flex flex-col gap-4 text-left">
+                {/* 기능 1 */}
+                <div className="flex gap-3 items-start">
+                  <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                    <LayoutTemplate className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <h4 className="text-xs font-black text-slate-800 dark:text-zinc-200">1. 내 브랜드 비주얼 테마 설정</h4>
+                    <p className="text-[10px] text-slate-500 dark:text-zinc-400 leading-relaxed mt-0.5 font-medium">
+                      Cyberpunk Neo, Midnight Teal, Glass Emerald 등 엄선된 5가지 프리미엄 그래디언트 디자인을 원클릭 설정으로 내 페이지에 즉각 반영할 수 있습니다.
+                    </p>
                   </div>
                 </div>
-              )
-            })
-          ) : (
-            <div className={`p-8 rounded-2xl border text-center transition-all ${activePreset.cardClass}`}>
-              <p className="text-xs font-semibold text-zinc-500">등록된 마이링크가 아직 없습니다.</p>
-            </div>
-          )}
-        </section>
 
-        {/* 푸터 영역 */}
-        <footer className="mt-8 text-center text-[11px] text-zinc-500/85 select-none flex flex-col items-center gap-2">
-          <div className="flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-zinc-500 animate-ping" />
-            <p>고품격 글래스모피즘 디자인으로 제작되었습니다</p>
-          </div>
-          <p>© {new Date().getFullYear()} My Link. All rights reserved.</p>
-        </footer>
+                {/* 기능 2 */}
+                <div className="flex gap-3 items-start">
+                  <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                    <Edit3 className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <h4 className="text-xs font-black text-slate-800 dark:text-zinc-200">2. 초간편 링크 인라인(Inline) 편집</h4>
+                    <p className="text-[10px] text-slate-500 dark:text-zinc-400 leading-relaxed mt-0.5 font-medium">
+                      별도의 팝업 창 이동 없이 설정 페이지 리스트에서 항목을 클릭해 즉석에서 이름และ URL을 즉시 편집하고 지울 수 있는 인라인 인터랙션이 제공됩니다.
+                    </p>
+                  </div>
+                </div>
+
+                {/* 기능 3 */}
+                <div className="flex gap-3 items-start">
+                  <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                    <BadgePlus className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <h4 className="text-xs font-black text-slate-800 dark:text-zinc-200">3. 프로필 정보 및 스택 배지 데코레이션</h4>
+                    <p className="text-[10px] text-slate-500 dark:text-zinc-400 leading-relaxed mt-0.5 font-medium">
+                      아바타 이니셜과 한줄 자기소개(Bio)를 꾸미고, 나만의 강점 기술이나 관심 분야를 컬러풀한 태그 배지로 개성있게 연출할 수 있습니다.
+                    </p>
+                  </div>
+                </div>
+
+                {/* 기능 4 */}
+                <div className="flex gap-3 items-start">
+                  <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                    <Globe className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <h4 className="text-xs font-black text-slate-800 dark:text-zinc-200">4. 하단 고정형 소셜 미디어 독(Dock)</h4>
+                    <p className="text-[10px] text-slate-500 dark:text-zinc-400 leading-relaxed mt-0.5 font-medium">
+                      GitHub, LinkedIn, YouTube, Instagram 등 내가 대외적으로 활동하는 주요 SNS 채널들을 설정 페이지에서 독(Dock) 형태로 연동할 수 있습니다.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="border-t border-black/10 dark:border-white/10 pt-4 text-center">
+                <p className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 leading-normal">
+                  🔑 구글 로그인을 완료하면 나만의 전용 링크 설정 페이지(<span className="text-emerald-600 dark:text-emerald-400 font-extrabold">mylink.com/내이름</span>)와 위 모든 기능이 담긴 개인 설정 센터가 1초 만에 무료 개설됩니다!
+                </p>
+              </div>
+            </Card>
+
+            {/* 비로그인 홈 전용 세련된 푸터 */}
+            <footer className="mt-4 text-center text-[11px] text-zinc-500/85 select-none flex flex-col items-center gap-2 w-full">
+              <div className="flex items-center gap-1.5 justify-center">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping" />
+                <p>고품격 글래스모피즘 디자인의 마이링크 가이드</p>
+              </div>
+              <p>© {new Date().getFullYear()} My Link. All rights reserved.</p>
+            </footer>
+          </>
+        ) : (
+          // ==================== [CASE B] 로그인 유저 또는 개별 퍼블릭 링크 뷰 ====================
+          <>
+            {/* 프로필 정보 섹션 */}
+            <header className="flex flex-col items-center text-center w-full">
+              <div className="relative group">
+                {/* 프로필 외곽 다이내믹 그라데이션 광원 */}
+                <div className={`absolute -inset-1 rounded-full ${activePreset.primaryBg} opacity-50 blur-md group-hover:opacity-95 group-hover:blur-xl transition duration-700`} />
+                
+                {/* 프로필 아바타 서클 */}
+                <div className="relative flex h-24 w-24 items-center justify-center rounded-full bg-zinc-950 text-3xl font-black tracking-wider text-white shadow-2xl border-2 border-white/15 transition-transform duration-300 hover:scale-105">
+                  {profile.avatarInitials || "JU"}
+                </div>
+              </div>
+
+              {/* 프로필 이름 */}
+              <h1 className="mt-5 text-xl font-black tracking-tight sm:text-2xl">
+                {profile.displayName || "이름 정보 없음"}
+              </h1>
+
+              {/* 프로필 Bio 자기소개 */}
+              <div className="mt-3.5 w-full max-w-xs sm:max-w-sm">
+                <p className="text-xs leading-relaxed text-zinc-400">
+                  {profile.bio || "아직 작성된 자기소개가 없습니다."}
+                </p>
+              </div>
+
+              {/* 전문 관심 스택 배지 리스트 */}
+              {tags.length > 0 && (
+                <div className="mt-5 flex flex-wrap justify-center gap-1.5 max-w-sm">
+                  {tags.map((tag) => (
+                    <span 
+                      key={tag} 
+                      className={`text-[10px] py-1 px-2.5 rounded-full font-bold select-none transition-transform hover:scale-105 ${activePreset.tagBg}`}
+                    >
+                      #{tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </header>
+
+            {/* 4. 연결 링크 목록 섹션 (순수 뷰어 모드 & 글래스모피즘 디자인) */}
+            <section className="flex w-full flex-col gap-4">
+              {links.length > 0 ? (
+                links.map((link, index) => {
+                  const faviconUrl = getFaviconUrl(link.url, 64)
+
+                  return (
+                    <div
+                      key={link.id}
+                      className="group relative w-full"
+                      style={{
+                        animationDelay: `${index * 100}ms`,
+                        animationFillMode: "both",
+                      }}
+                    >
+                      {/* 엣지 글로우 라인 장식 */}
+                      <div className={`absolute -inset-0.5 rounded-2xl bg-gradient-to-r ${activePreset.primaryBg} opacity-0 group-hover:opacity-40 transition-opacity duration-300 blur-sm -z-10`} />
+
+                      {/* 링크 메인 카드 */}
+                      <div 
+                        className={`flex items-center gap-3.5 p-4 rounded-2xl transition-all duration-300 ${activePreset.cardClass} ${activePreset.cardHoverGlow} cursor-pointer transform hover:-translate-y-1 hover:scale-[1.02] active:scale-[0.98]`}
+                        onClick={() => {
+                          window.open(link.url, "_blank", "noopener,noreferrer")
+                        }}
+                      >
+                        
+                        {/* 파비콘 아이콘 컨테이너 */}
+                        <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-white/95 dark:bg-zinc-800/90 p-2.5 shadow-[inset_0_2px_4px_rgba(0,0,0,0.06)] border border-white/20 transition-transform duration-300 group-hover:scale-105">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={faviconUrl}
+                            alt={`${link.title} 파비콘`}
+                            className="h-7 w-7 object-contain"
+                            loading="lazy"
+                            onError={(e) => {
+                              const target = e.currentTarget
+                              target.style.display = "none"
+                              const parent = target.parentElement
+                              if (parent) {
+                                const existingFallback = parent.querySelector(".favicon-fallback")
+                                if (existingFallback) existingFallback.remove()
+                                
+                                const fallback = document.createElement("div")
+                                fallback.className = "favicon-fallback flex h-full w-full items-center justify-center text-base font-extrabold text-fuchsia-500 dark:text-cyan-400"
+                                fallback.innerText = link.title ? link.title.substring(0, 1).toUpperCase() : "🔗"
+                                parent.appendChild(fallback)
+                              }
+                            }}
+                          />
+                        </div>
+
+                        {/* 텍스트 타이틀 & URL 정보 */}
+                        <div className="flex-grow text-left overflow-hidden">
+                          <h2 className={`text-[14px] sm:text-[15px] font-black leading-snug tracking-tight transition-colors ${activePreset.primaryText}`}>
+                            {link.title}
+                          </h2>
+                          <p className="mt-1 text-[11px] truncate font-medium text-zinc-400/85 max-w-[210px] sm:max-w-[270px]">
+                            {link.url.replace(/^https?:\/\/(www\.)?/, "")}
+                          </p>
+                        </div>
+
+                        {/* 우측 앰비언트 액션 아이콘 */}
+                        <div className="flex-shrink-0 flex items-center pl-1">
+                          <span className={`text-zinc-400 transition-all duration-300 group-hover:translate-x-0.5 ${activePreset.accentText}`}>
+                            <ExternalLink className="h-4 w-4" />
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })
+              ) : (
+                <div className={`p-8 rounded-2xl border text-center transition-all ${activePreset.cardClass}`}>
+                  <p className="text-xs font-semibold text-zinc-500">등록된 마이링크가 아직 없습니다.</p>
+                </div>
+              )}
+            </section>
+
+            {/* 푸터 영역 */}
+            <footer className="mt-8 text-center text-[11px] text-zinc-500/85 select-none flex flex-col items-center gap-2">
+              <div className="flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-zinc-500 animate-ping" />
+                <p>고품격 글래스모피즘 디자인으로 제작되었습니다</p>
+              </div>
+              <p>© {new Date().getFullYear()} My Link. All rights reserved.</p>
+            </footer>
+          </>
+        )}
       </div>
 
-      {/* 5. 하단 고정형 세련된 소셜 미디어 독 */}
-      {socials.filter((s) => s.url).length > 0 && (
+      {/* 5. 하단 고정형 세련된 소셜 미디어 독 (비로그인 첫 화면일 때는 렌더링하지 않음) */}
+      {!showIntroBanner && socials.filter((s) => s.url).length > 0 && (
         <nav className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2 flex items-center gap-4 bg-zinc-900/70 dark:bg-black/40 border border-white/10 dark:border-white/5 backdrop-blur-xl px-5 py-2.5 rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.4)] transition-transform duration-300 hover:scale-105">
           {socials
             .filter((social) => social.url)

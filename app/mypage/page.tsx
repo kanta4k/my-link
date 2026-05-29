@@ -10,6 +10,10 @@ import {
 import { dummyLinks, dummySocials, defaultTags, getFaviconUrl, LinkItem, SocialItem } from "@/Data/links"
 import { Card } from "@/components/ui/card"
 import { Dialog } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
+import { cn } from "@/lib/utils"
 import { db } from "@/lib/firebase"
 import { useAuth } from "@/context/AuthContext"
 import Header from "@/components/Header"
@@ -124,12 +128,30 @@ const themePresets: ThemePreset[] = [
   }
 ];
 
+// 테마별 동적 포커싱 링 클래스 매퍼
+const getFocusRingClass = (themeId: string) => {
+  switch (themeId) {
+    case "cyberpunk":
+      return "focus:border-fuchsia-500/60 focus:ring-1 focus:ring-fuchsia-500/30"
+    case "emerald":
+      return "focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30"
+    case "sunset":
+      return "focus:border-orange-500/60 focus:ring-1 focus:ring-orange-500/30"
+    case "minimal":
+      return "focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/30"
+    case "glass-light":
+      return "focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30"
+    default:
+      return "focus:border-fuchsia-500/60 focus:ring-1 focus:ring-fuchsia-500/30"
+  }
+}
+
 export default function MyPage() {
   const router = useRouter()
   const { user, loading: authLoading, loginWithGoogle } = useAuth()
 
   const [mounted, setMounted] = useState(false)
-  const [activeThemeId, setActiveThemeId] = useState<string>("cyberpunk")
+  const [activeThemeId, setActiveThemeId] = useState<string>("glass-light")
 
   // 핵심 관리 상태 정의
   const [profile, setProfile] = useState({
@@ -197,7 +219,7 @@ export default function MyPage() {
           avatarInitials: user.displayName ? user.displayName.substring(0, 2).toUpperCase() : "JU"
         }
         const initialTags = savedTags ? JSON.parse(savedTags) : defaultTags
-        const initialThemeId = savedThemeId || "cyberpunk"
+        const initialThemeId = savedThemeId || "glass-light"
 
         // 최초 1회 Firestore 문서 생성
         try {
@@ -587,7 +609,7 @@ export default function MyPage() {
         batch.set(profileDocRef, {
           profile: defaultProfile,
           tags: defaultTags,
-          themeId: "cyberpunk",
+          themeId: "glass-light",
           createdAt: serverTimestamp()
         }, { merge: true })
 
@@ -596,7 +618,7 @@ export default function MyPage() {
         setProfile(defaultProfile)
         setSocials(dummySocials)
         setTags(defaultTags)
-        setActiveThemeId("cyberpunk")
+        setActiveThemeId("glass-light")
 
         showToast("🔄 본인 계정의 데이터가 데모 기본값으로 완벽하게 초기화되었습니다.")
       } catch (err) {
@@ -658,7 +680,7 @@ export default function MyPage() {
       <div className="flex min-h-svh items-center justify-center bg-zinc-950 text-white">
         <div className="flex flex-col items-center gap-4">
           <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-r-2 border-fuchsia-500" />
-          <p className="text-xs font-bold tracking-widest text-zinc-400">관리 센터를 불러오는 중...</p>
+          <p className="text-xs font-bold tracking-widest text-zinc-400">설정 페이지를 불러오는 중...</p>
         </div>
       </div>
     )
@@ -686,10 +708,10 @@ export default function MyPage() {
 
           <div className="flex flex-col gap-2">
             <h1 className="text-xl sm:text-2xl font-black bg-gradient-to-r from-white via-zinc-100 to-zinc-400 bg-clip-text text-transparent">
-              관리자 로그인 필요
+              로그인 필요
             </h1>
             <p className="text-xs text-zinc-400 leading-relaxed max-w-xs mx-auto">
-              마이링크 관리 센터는 보호된 영역입니다. 나만의 프리미엄 링크 트리를 편집하려면 구글 로그인을 진행해 주세요.
+              마이링크 설정 센터는 보호된 영역입니다. 나만의 프리미엄 링크 트리를 편집하려면 구글 로그인을 진행해 주세요.
             </p>
           </div>
 
@@ -749,7 +771,7 @@ export default function MyPage() {
         <section className="flex flex-col gap-1.5 text-left pl-1">
           <h1 className="text-xl sm:text-2xl font-black bg-gradient-to-r from-white via-zinc-100 to-zinc-400 bg-clip-text text-transparent flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-amber-400" />
-            마이링크 관리 센터
+            마이링크 설정 센터
           </h1>
           <p className="text-xs text-zinc-400 leading-relaxed">
             안녕하세요, <span className="text-zinc-200 font-bold">{user.displayName || "사용자"}</span>님! 나만의 퍼블릭 링크, 비주얼 테마, 프로필 상태를 완벽하게 제어합니다.
@@ -799,48 +821,48 @@ export default function MyPage() {
           <div className="flex flex-col sm:flex-row gap-4 items-start text-left">
             {/* 아바타 이니셜 입력란 */}
             <div className="flex flex-col gap-1.5 w-full sm:w-20">
-              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest pl-0.5">아바타</label>
-              <input
+              <Label>아바타</Label>
+              <Input
                 type="text"
                 maxLength={2}
                 value={profile.avatarInitials}
                 onChange={(e) => handleProfileFieldChange("avatarInitials", e.target.value.toUpperCase())}
                 placeholder="JU"
-                className="w-full text-center bg-zinc-950/85 border border-white/10 rounded-xl py-2 px-3 text-sm font-black text-white outline-none focus:border-cyan-500/80 uppercase"
+                className={cn("text-center font-black uppercase", getFocusRingClass(activeThemeId))}
               />
             </div>
 
             {/* 표시 이름(displayName) 입력란 */}
             <div className="flex flex-col gap-1.5 flex-grow w-full">
-              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest pl-0.5">표시 이름</label>
-              <input
+              <Label>표시 이름</Label>
+              <Input
                 type="text"
                 value={profile.displayName}
                 onChange={(e) => handleProfileFieldChange("displayName", e.target.value)}
                 placeholder="이름 혹은 닉네임을 적어주세요."
-                className="w-full bg-zinc-950/85 border border-white/10 rounded-xl py-2 px-3 text-sm font-bold text-white outline-none focus:border-cyan-500/80"
+                className={getFocusRingClass(activeThemeId)}
               />
             </div>
           </div>
 
           {/* 단문 소개(bio) 입력란 */}
           <div className="flex flex-col gap-1.5 w-full text-left">
-            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest pl-0.5">단문 자기소개 (Bio)</label>
-            <textarea
+            <Label>단문 자기소개 (Bio)</Label>
+            <Textarea
               value={profile.bio}
               onChange={(e) => handleProfileFieldChange("bio", e.target.value)}
               placeholder="자신을 나타내는 멋진 한 줄을 작성해 주세요."
               rows={3}
-              className="w-full bg-zinc-950/85 border border-white/10 rounded-xl py-2.5 px-3 text-xs text-zinc-200 outline-none focus:border-cyan-500/80 resize-none leading-relaxed"
+              className={getFocusRingClass(activeThemeId)}
             />
           </div>
 
           {/* 스택 태그 관리 */}
           <div className="flex flex-col gap-2 w-full pt-1 text-left">
-            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest flex items-center justify-between pl-0.5">
+            <Label className="flex items-center justify-between">
               <span>관심 분야 / 스택 태그</span>
-              <span className="text-[9px] text-zinc-500 font-normal">태그 삭제 시 우측 × 클릭</span>
-            </label>
+              <span className="text-[9px] text-zinc-500 font-normal lowercase tracking-normal">태그 삭제 시 우측 × 클릭</span>
+            </Label>
 
             {/* 기존 등록된 배지 */}
             <div className="flex flex-wrap gap-1.5 min-h-[30px] p-2 bg-zinc-950/50 rounded-xl border border-white/5">
@@ -867,12 +889,12 @@ export default function MyPage() {
             <div className="mt-1">
               {isAddingTag ? (
                 <form onSubmit={handleAddTagSubmit} className="flex gap-2 w-full max-w-sm">
-                  <input
+                  <Input
                     type="text"
                     placeholder="예: React 19"
                     value={newTag}
                     onChange={(e) => setNewTag(e.target.value)}
-                    className="flex-grow bg-zinc-950/80 border border-white/15 rounded-xl px-3 py-1.5 text-xs text-white outline-none focus:border-cyan-500/50"
+                    className={cn("flex-grow px-3 py-1.5 h-8.5", getFocusRingClass(activeThemeId))}
                     autoFocus
                   />
                   <button 
@@ -960,20 +982,20 @@ export default function MyPage() {
                     {/* 텍스트 타이틀 혹은 인라인 수정 인풋 */}
                     {isLinkEditing ? (
                       <div className="flex flex-col gap-1.5 flex-grow pr-1">
-                        <input
+                        <Input
                           type="text"
                           value={editTitle}
                           onChange={(e) => setEditTitle(e.target.value)}
                           placeholder="링크 제목을 입력하세요"
-                          className="w-full bg-zinc-950 border border-white/15 rounded-lg px-2.5 py-1 text-xs text-white outline-none focus:border-amber-400"
+                          className={cn("w-full h-8.5 px-2.5 py-1 text-xs rounded-lg", getFocusRingClass(activeThemeId))}
                           autoFocus
                         />
-                        <input
+                        <Input
                           type="text"
                           value={editUrl}
                           onChange={(e) => setEditUrl(e.target.value)}
                           placeholder="연결 URL 주소를 입력하세요"
-                          className="w-full bg-zinc-950 border border-white/15 rounded-lg px-2.5 py-1 text-[11px] text-zinc-300 outline-none focus:border-amber-400"
+                          className={cn("w-full h-8.5 px-2.5 py-1 text-xs rounded-lg text-zinc-300", getFocusRingClass(activeThemeId))}
                         />
                       </div>
                     ) : (
@@ -1080,12 +1102,12 @@ export default function MyPage() {
                   <div className="flex-grow flex items-center gap-2 w-full sm:w-auto">
                     {isEditing ? (
                       <div className="flex gap-2 w-full">
-                        <input
+                        <Input
                           type="text"
                           value={tempSocialUrl}
                           onChange={(e) => setTempSocialUrl(e.target.value)}
                           placeholder={social.platform === 'email' ? "unhak@example.com" : "URL 주소를 적어주세요."}
-                          className="flex-grow bg-zinc-950 border border-white/15 rounded-xl px-3 py-1.5 text-xs text-white outline-none focus:border-emerald-400"
+                          className={cn("flex-grow px-3 py-1.5 h-8.5", getFocusRingClass(activeThemeId))}
                           autoFocus
                         />
                         <button
@@ -1165,30 +1187,28 @@ export default function MyPage() {
       >
         <form onSubmit={handleAddLinkSubmit} className="flex flex-col gap-4 text-left">
           <div className="flex flex-col gap-1.5">
-            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest pl-0.5">
-              웹페이지 제목
-            </label>
-            <input
+            <Label>웹페이지 제목</Label>
+            <Input
               type="text"
               placeholder="예: 깃허브 개인 저장소"
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
-              className="w-full bg-zinc-950 border border-white/10 rounded-xl py-2.5 px-3 text-xs text-white outline-none focus:border-amber-400"
+              className={getFocusRingClass(activeThemeId)}
               autoFocus
             />
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest pl-0.5 flex items-center justify-between">
+            <Label className="flex items-center justify-between">
               <span>연결 주소 (URL)</span>
-              <span className="text-[9px] text-zinc-500 font-normal">프로토콜 자동 보완됨</span>
-            </label>
-            <input
+              <span className="text-[9px] text-zinc-500 font-normal lowercase tracking-normal">프로토콜 자동 보완됨</span>
+            </Label>
+            <Input
               type="text"
               placeholder="예: github.com"
               value={newUrl}
               onChange={(e) => setNewUrl(e.target.value)}
-              className="w-full bg-zinc-950 border border-white/10 rounded-xl py-2.5 px-3 text-xs text-white outline-none focus:border-amber-400"
+              className={getFocusRingClass(activeThemeId)}
             />
           </div>
 
