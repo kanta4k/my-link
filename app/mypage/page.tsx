@@ -29,8 +29,73 @@ import {
   orderBy, 
   writeBatch, 
   getDocs, 
+  getDoc,
+  runTransaction,
   serverTimestamp 
 } from "firebase/firestore"
+
+interface UserProfile {
+  username: string;
+  displayName: string;
+  bio: string;
+  avatarInitials: string;
+}
+
+const DEFAULT_BIO = "🚀 마이링크 프론트엔드 리디자인 연구원 | 멋진 인터랙션과 최상의 UX를 설계하는 제품 지향적 개발자입니다. React, Next.js, Rust에 푹 빠져있습니다."
+
+const sanitizeUsername = (value: string) => {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^[._-]+|[._-]+$/g, "")
+    .slice(0, 30)
+}
+
+const getDefaultUsername = (user: NonNullable<ReturnType<typeof useAuth>["user"]>) => {
+  const emailPrefix = user.email?.split("@")[0] || ""
+  return sanitizeUsername(emailPrefix) || `user-${user.uid.slice(0, 8).toLowerCase()}`
+}
+
+const getAvatarInitials = (displayName: string) => {
+  return displayName.trim().substring(0, 2).toUpperCase() || "ML"
+}
+
+const buildProfile = (
+  user: NonNullable<ReturnType<typeof useAuth>["user"]>,
+  source?: Partial<UserProfile>
+): UserProfile => {
+  const displayName = source?.displayName || user.displayName || "마이링크 사용자"
+  return {
+    username: sanitizeUsername(source?.username || getDefaultUsername(user)),
+    displayName,
+    bio: source?.bio || DEFAULT_BIO,
+    avatarInitials: source?.avatarInitials || getAvatarInitials(displayName),
+  }
+}
+
+const editableSocialPlatforms: SocialItem["platform"][] = ["github", "linkedin", "twitter", "youtube", "instagram"]
+
+const getAvailableUsername = async (
+  user: NonNullable<ReturnType<typeof useAuth>["user"]>,
+  preferredUsername: string
+) => {
+  const baseUsername = sanitizeUsername(preferredUsername) || getDefaultUsername(user)
+  let candidate = baseUsername
+
+  for (let index = 0; index < 20; index += 1) {
+    const usernameSnapshot = await getDoc(doc(db, "usernames", candidate))
+    if (!usernameSnapshot.exists() || usernameSnapshot.data().uid === user.uid) {
+      return candidate
+    }
+
+    const suffix = index === 0 ? user.uid.slice(0, 4).toLowerCase() : `${user.uid.slice(0, 4).toLowerCase()}-${index}`
+    candidate = `${baseUsername.slice(0, Math.max(3, 30 - suffix.length - 1))}-${suffix}`
+  }
+
+  return `user-${user.uid.slice(0, 12).toLowerCase()}`
+}
 
 // 테마 프리셋 인터페이스 정의
 interface ThemePreset {
@@ -154,11 +219,16 @@ export default function MyPage() {
   const [activeThemeId, setActiveThemeId] = useState<string>("glass-light")
 
   // 핵심 관리 상태 정의
-  const [profile, setProfile] = useState({
-    displayName: "정운학 (Unhak Jeong)",
-    bio: "🚀 마이링크 프론트엔드 리디자인 연구원 | 멋진 인터랙션과 최상의 UX를 설계하는 제품 지향적 개발자입니다. React, Next.js, Rust에 푹 빠져있습니다.",
+  const [profile, setProfile] = useState<UserProfile>({
+    username: "mylink",
+    displayName: "마이링크 사용자",
+    bio: DEFAULT_BIO,
     avatarInitials: "JU"
   })
+  const [profileDraft, setProfileDraft] = useState<UserProfile>(profile)
+  const [isEditingProfile, setIsEditingProfile] = useState(false)
+  const [isSavingProfile, setIsSavingProfile] = useState(false)
+  const [profileError, setProfileError] = useState<string | null>(null)
   
   const [links, setLinks] = useState<LinkItem[]>([])
   const [socials, setSocials] = useState<SocialItem[]>([])
@@ -199,46 +269,81 @@ export default function MyPage() {
   useEffect(() => {
     if (!mounted || !user) return
 
-    // 1. 프로필 정보 실시간 동기화
-    const profileDocRef = doc(db, "users", user.uid)
+    // 1. 프로필 정보 실시간 동기화 (users/{uid}/profile/main)
+    const userDocRef = doc(db, "users", user.uid)
+    const profileDocRef = doc(db, "users", user.uid, "profile", "main")
     const unsubscribeProfile = onSnapshot(profileDocRef, async (snapshot) => {
       if (snapshot.exists()) {
-        const data = snapshot.data()
-        if (data.profile) setProfile(data.profile)
-        if (data.tags) setTags(data.tags)
-        if (data.themeId) setActiveThemeId(data.themeId)
+        const nextProfile = buildProfile(user, snapshot.data() as Partial<UserProfile>)
+        setProfile(nextProfile)
+        if (!isEditingProfile) {
+          setProfileDraft(nextProfile)
+        }
       } else {
         // Firestore에 프로필 문서가 없는 경우 로컬 스토리지 마이그레이션 또는 초기 Seeding
         const savedProfile = localStorage.getItem("mylink_profile")
-        const savedTags = localStorage.getItem("mylink_tags")
-        const savedThemeId = localStorage.getItem("mylink_theme_id")
-
-        const initialProfile = savedProfile ? JSON.parse(savedProfile) : {
-          displayName: user.displayName || "정운학 (Unhak Jeong)",
-          bio: "🚀 마이링크 프론트엔드 리디자인 연구원 | 멋진 인터랙션과 최상의 UX를 설계하는 제품 지향적 개발자입니다. React, Next.js, Rust에 푹 빠져있습니다.",
-          avatarInitials: user.displayName ? user.displayName.substring(0, 2).toUpperCase() : "JU"
+        const legacySnapshot = await getDoc(userDocRef)
+        const legacyProfile = legacySnapshot.exists() ? legacySnapshot.data().profile : null
+        const parsedSavedProfile = savedProfile ? JSON.parse(savedProfile) : null
+        const initialProfileBase = buildProfile(user, legacyProfile || parsedSavedProfile || undefined)
+        const initialProfile = {
+          ...initialProfileBase,
+          username: await getAvailableUsername(user, initialProfileBase.username)
         }
-        const initialTags = savedTags ? JSON.parse(savedTags) : defaultTags
-        const initialThemeId = savedThemeId || "glass-light"
 
         // 최초 1회 Firestore 문서 생성
         try {
           await setDoc(profileDocRef, {
+            ...initialProfile,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          }, { merge: true })
+          await setDoc(userDocRef, {
             profile: initialProfile,
-            tags: initialTags,
-            themeId: initialThemeId,
-            createdAt: serverTimestamp()
+            updatedAt: serverTimestamp()
+          }, { merge: true })
+          await setDoc(doc(db, "usernames", initialProfile.username), {
+            uid: user.uid,
+            username: initialProfile.username,
+            updatedAt: serverTimestamp()
           }, { merge: true })
         } catch (e) {
           console.error("Failed to seed initial user profile in Firestore", e)
         }
 
         setProfile(initialProfile)
+        setProfileDraft(initialProfile)
+      }
+    }, (error) => {
+      console.error("Firestore Profile Sync Error: ", error)
+    })
+
+    const unsubscribeUser = onSnapshot(userDocRef, async (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data()
+        if (data.tags) setTags(data.tags)
+        if (data.themeId) setActiveThemeId(data.themeId)
+      } else {
+        const savedTags = localStorage.getItem("mylink_tags")
+        const savedThemeId = localStorage.getItem("mylink_theme_id")
+        const initialTags = savedTags ? JSON.parse(savedTags) : defaultTags
+        const initialThemeId = savedThemeId || "glass-light"
+
+        try {
+          await setDoc(userDocRef, {
+            tags: initialTags,
+            themeId: initialThemeId,
+            createdAt: serverTimestamp()
+          }, { merge: true })
+        } catch (e) {
+          console.error("Failed to seed initial user settings in Firestore", e)
+        }
+
         setTags(initialTags)
         setActiveThemeId(initialThemeId)
       }
     }, (error) => {
-      console.error("Firestore Profile Sync Error: ", error)
+      console.error("Firestore user settings Sync Error: ", error)
     })
 
     // 2. Links 실시간 동기화 (users/{uid}/links)
@@ -276,10 +381,11 @@ export default function MyPage() {
 
     return () => {
       unsubscribeProfile()
+      unsubscribeUser()
       unsubscribeLinks()
       unsubscribeSocials()
     }
-  }, [user, mounted])
+  }, [user, mounted, isEditingProfile])
 
   // 활성 프리셋 정보 로드
   const activePreset = themePresets.find(p => p.id === activeThemeId) || themePresets[0]
@@ -292,19 +398,108 @@ export default function MyPage() {
     }, 2800)
   }
 
-  // 프로필 텍스트 필드 실시간 반영 및 저장 (Firestore 연동)
-  const handleProfileFieldChange = async (field: "displayName" | "bio" | "avatarInitials", value: string) => {
-    const updated = { ...profile, [field]: value }
-    setProfile(updated)
-    localStorage.setItem("mylink_profile", JSON.stringify(updated))
+  const handleProfileDraftChange = (field: "username" | "displayName" | "bio", value: string) => {
+    setProfileError(null)
+    setProfileDraft((current) => {
+      const next = {
+        ...current,
+        [field]: field === "username" ? sanitizeUsername(value) : value,
+      }
 
-    if (!user) return
+      if (field === "displayName") {
+        next.avatarInitials = getAvatarInitials(value)
+      }
+
+      return next
+    })
+  }
+
+  const startEditingProfile = () => {
+    setProfileDraft(profile)
+    setProfileError(null)
+    setIsEditingProfile(true)
+  }
+
+  const cancelEditingProfile = () => {
+    setProfileDraft(profile)
+    setProfileError(null)
+    setIsEditingProfile(false)
+  }
+
+  const saveProfile = async () => {
+    if (!user || isSavingProfile) return
+
+    const nextProfile = buildProfile(user, {
+      username: profileDraft.username,
+      displayName: profileDraft.displayName.trim(),
+      bio: profileDraft.bio.trim(),
+      avatarInitials: getAvatarInitials(profileDraft.displayName),
+    })
+
+    if (nextProfile.username.length < 3) {
+      setProfileError("username은 3자 이상으로 입력해 주세요.")
+      return
+    }
+
+    if (!nextProfile.displayName) {
+      setProfileError("표시 이름을 입력해 주세요.")
+      return
+    }
+
+    setIsSavingProfile(true)
+    setProfileError(null)
+
     try {
-      await setDoc(doc(db, "users", user.uid), {
-        profile: updated
-      }, { merge: true })
+      const profileDocRef = doc(db, "users", user.uid, "profile", "main")
+      const userDocRef = doc(db, "users", user.uid)
+      const usernameDocRef = doc(db, "usernames", nextProfile.username)
+      const previousUsername = profile.username && profile.username !== nextProfile.username ? profile.username : null
+      const previousUsernameDocRef = previousUsername ? doc(db, "usernames", previousUsername) : null
+
+      await runTransaction(db, async (transaction) => {
+        const usernameSnapshot = await transaction.get(usernameDocRef)
+        const previousUsernameSnapshot = previousUsernameDocRef ? await transaction.get(previousUsernameDocRef) : null
+
+        if (usernameSnapshot.exists() && usernameSnapshot.data().uid !== user.uid) {
+          throw new Error("USERNAME_TAKEN")
+        }
+
+        transaction.set(profileDocRef, {
+          ...nextProfile,
+          updatedAt: serverTimestamp(),
+        }, { merge: true })
+
+        transaction.set(userDocRef, {
+          profile: nextProfile,
+          updatedAt: serverTimestamp(),
+        }, { merge: true })
+
+        transaction.set(usernameDocRef, {
+          uid: user.uid,
+          username: nextProfile.username,
+          updatedAt: serverTimestamp(),
+        }, { merge: true })
+
+        if (previousUsernameDocRef && previousUsernameSnapshot?.exists() && previousUsernameSnapshot.data().uid === user.uid) {
+          transaction.delete(previousUsernameDocRef)
+        }
+      })
+
+      setProfile(nextProfile)
+      setProfileDraft(nextProfile)
+      localStorage.setItem("mylink_profile", JSON.stringify(nextProfile))
+      setIsEditingProfile(false)
+      showToast("✅ 프로필 정보가 저장되었습니다.")
     } catch (err) {
+      if (err instanceof Error && err.message === "USERNAME_TAKEN") {
+        setProfileError("이미 사용 중인 username입니다.")
+        return
+      }
+
       console.error("Failed to save profile to Firestore", err)
+      setProfileError("프로필 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.")
+    } finally {
+      setIsSavingProfile(false)
     }
   }
 
@@ -587,11 +782,7 @@ export default function MyPage() {
   const handleResetToDemo = async () => {
     if (!user) return
     if (confirm("🚨 경고: 정말 모든 데이터를 데모 초기값으로 복구하시겠습니까?\n현재 본인 계정에 업로드된 모든 프로필 및 링크 카드 수정 이력이 초기화됩니다.")) {
-      const defaultProfile = {
-        displayName: user.displayName || "정운학 (Unhak Jeong)",
-        bio: "🚀 마이링크 프론트엔드 리디자인 연구원 | 멋진 인터랙션과 최상의 UX를 설계하는 제품 지향적 개발자입니다. React, Next.js, Rust에 푹 빠져있습니다.",
-        avatarInitials: user.displayName ? user.displayName.substring(0, 2).toUpperCase() : "JU"
-      }
+      const defaultProfile = buildProfile(user)
 
       try {
         const linksRef = collection(db, "users", user.uid, "links")
@@ -629,17 +820,29 @@ export default function MyPage() {
         })
 
         // 프로필 문서 리셋
-        const profileDocRef = doc(db, "users", user.uid)
+        const userDocRef = doc(db, "users", user.uid)
+        const profileDocRef = doc(db, "users", user.uid, "profile", "main")
         batch.set(profileDocRef, {
+          ...defaultProfile,
+          updatedAt: serverTimestamp()
+        }, { merge: true })
+        batch.set(userDocRef, {
           profile: defaultProfile,
           tags: defaultTags,
           themeId: "glass-light",
           createdAt: serverTimestamp()
         }, { merge: true })
+        batch.set(doc(db, "usernames", defaultProfile.username), {
+          uid: user.uid,
+          username: defaultProfile.username,
+          updatedAt: serverTimestamp()
+        }, { merge: true })
 
         await batch.commit()
 
         setProfile(defaultProfile)
+        setProfileDraft(defaultProfile)
+        setIsEditingProfile(false)
         setSocials(dummySocials)
         setTags(defaultTags)
         setActiveThemeId("glass-light")
@@ -841,48 +1044,100 @@ export default function MyPage() {
 
         {/* CARD 2: 프로필 정보 편집 */}
         <Card className={`p-5 backdrop-blur-xl border flex flex-col gap-5 ${activePreset.cardClass}`}>
-          <div className="flex items-center gap-2 border-b border-white/10 pb-3">
-            <User className={`h-4.5 w-4.5 ${activePreset.primaryText}`} />
-            <h2 className="text-sm font-bold text-white tracking-wide">프로필 정보 편집</h2>
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-4 items-start text-left">
-            {/* 아바타 이니셜 입력란 */}
-            <div className="flex flex-col gap-1.5 w-full sm:w-20">
-              <Label>아바타</Label>
-              <Input
-                type="text"
-                maxLength={2}
-                value={profile.avatarInitials}
-                onChange={(e) => handleProfileFieldChange("avatarInitials", e.target.value.toUpperCase())}
-                placeholder="JU"
-                className={cn("text-center font-black uppercase", getFocusRingClass(activeThemeId))}
-              />
+          <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-3">
+            <div className="flex items-center gap-2">
+              <User className={`h-4.5 w-4.5 ${activePreset.primaryText}`} />
+              <h2 className="text-sm font-bold text-white tracking-wide">프로필 정보 편집</h2>
             </div>
 
-            {/* 표시 이름(displayName) 입력란 */}
-            <div className="flex flex-col gap-1.5 flex-grow w-full">
+            {isEditingProfile ? (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={saveProfile}
+                  disabled={isSavingProfile}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-[10px] font-black text-zinc-950 transition-all hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
+                >
+                  <Check className="h-3 w-3" />
+                  저장
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelEditingProfile}
+                  disabled={isSavingProfile}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-white/5 bg-white/5 px-3 py-1.5 text-[10px] font-bold text-zinc-300 transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
+                >
+                  <X className="h-3 w-3" />
+                  취소
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={startEditingProfile}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-white/5 bg-white/5 px-3 py-1.5 text-[10px] font-bold text-zinc-300 transition-all hover:bg-white/10 hover:text-white cursor-pointer"
+              >
+                <Edit3 className="h-3 w-3" />
+                편집
+              </button>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-4 text-left">
+            <div className="flex flex-col gap-1.5 w-full">
+              <Label>username (공유 URL용)</Label>
+              <Input
+                type="text"
+                value={isEditingProfile ? profileDraft.username : profile.username}
+                onChange={(e) => handleProfileDraftChange("username", e.target.value)}
+                disabled={!isEditingProfile || isSavingProfile}
+                placeholder="username"
+                className={cn("font-bold lowercase disabled:opacity-80 disabled:cursor-default", getFocusRingClass(activeThemeId))}
+              />
+              <p className="text-[10px] text-zinc-500">공유 주소에 쓰이는 고유 이름입니다. 영문 소문자, 숫자, 점, 밑줄, 하이픈을 사용할 수 있습니다.</p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-4 items-start">
+              <div className="flex flex-col gap-1.5 w-full sm:w-20">
+                <Label>아바타</Label>
+                <Input
+                  type="text"
+                  value={(isEditingProfile ? profileDraft.avatarInitials : profile.avatarInitials) || "ML"}
+                  disabled
+                  className="text-center font-black uppercase disabled:cursor-default disabled:opacity-80"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5 flex-grow w-full">
               <Label>표시 이름</Label>
               <Input
                 type="text"
-                value={profile.displayName}
-                onChange={(e) => handleProfileFieldChange("displayName", e.target.value)}
+                value={isEditingProfile ? profileDraft.displayName : profile.displayName}
+                onChange={(e) => handleProfileDraftChange("displayName", e.target.value)}
+                disabled={!isEditingProfile || isSavingProfile}
                 placeholder="이름 혹은 닉네임을 적어주세요."
-                className={getFocusRingClass(activeThemeId)}
+                className={cn("disabled:opacity-80 disabled:cursor-default", getFocusRingClass(activeThemeId))}
+              />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5 w-full">
+              <Label>소개글</Label>
+              <Textarea
+                value={isEditingProfile ? profileDraft.bio : profile.bio}
+                onChange={(e) => handleProfileDraftChange("bio", e.target.value)}
+                disabled={!isEditingProfile || isSavingProfile}
+                placeholder="자신을 나타내는 멋진 한 줄을 작성해 주세요."
+                rows={3}
+                className={cn("disabled:opacity-80 disabled:cursor-default", getFocusRingClass(activeThemeId))}
               />
             </div>
-          </div>
 
-          {/* 단문 소개(bio) 입력란 */}
-          <div className="flex flex-col gap-1.5 w-full text-left">
-            <Label>단문 자기소개 (Bio)</Label>
-            <Textarea
-              value={profile.bio}
-              onChange={(e) => handleProfileFieldChange("bio", e.target.value)}
-              placeholder="자신을 나타내는 멋진 한 줄을 작성해 주세요."
-              rows={3}
-              className={getFocusRingClass(activeThemeId)}
-            />
+            {profileError && (
+              <p className="rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2 text-[11px] font-bold text-red-300">
+                {profileError}
+              </p>
+            )}
           </div>
 
           {/* 스택 태그 관리 */}
@@ -1107,10 +1362,10 @@ export default function MyPage() {
           </p>
 
           <div className="flex flex-col gap-2.5 mt-1 text-left">
-            {['github', 'linkedin', 'twitter', 'youtube', 'instagram'].map((platform) => {
+            {editableSocialPlatforms.map((platform) => {
               const social = socials.find((s) => s.platform === platform) || {
                 id: `social-temp-${platform}`,
-                platform: platform as any,
+                platform,
                 url: "",
                 active: false
               }

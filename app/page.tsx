@@ -142,6 +142,7 @@ function LinkTreeContent() {
   
   // 프로필 정보 상태
   const [profile, setProfile] = useState({
+    username: "mylink",
     displayName: "정운학 (Unhak Jeong)",
     bio: "🚀 마이링크 프론트엔드 리디자인 연구원 | 멋진 인터랙션과 최상의 UX를 설계하는 제품 지향적 개발자입니다. React, Next.js, Rust에 푹 빠져있습니다.",
     avatarInitials: "JU"
@@ -168,7 +169,7 @@ function LinkTreeContent() {
     const unsubscribeProfile = onSnapshot(profileDocRef, async (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data()
-        if (data.profile) setProfile(data.profile)
+        if (data.profile) setProfile((current) => ({ ...current, ...data.profile }))
         if (data.tags) setTags(data.tags)
         if (data.themeId) setActiveThemeId(data.themeId)
       } else {
@@ -178,6 +179,7 @@ function LinkTreeContent() {
         const savedThemeId = localStorage.getItem("mylink_theme_id")
 
         const initialProfile = savedProfile ? JSON.parse(savedProfile) : {
+          username: user?.email?.split("@")[0]?.toLowerCase().replace(/[^a-z0-9._-]/g, "-") || "mylink",
           displayName: user?.displayName || "정운학 (Unhak Jeong)",
           bio: "🚀 마이링크 프론트엔드 리디자인 연구원 | 멋진 인터랙션과 최상의 UX를 설계하는 제품 지향적 개발자입니다. React, Next.js, Rust에 푹 빠져있습니다.",
           avatarInitials: user?.displayName ? user.displayName.substring(0, 2).toUpperCase() : "JU"
@@ -206,6 +208,15 @@ function LinkTreeContent() {
       }
     }, (error) => {
       console.error("Firestore Profile Sync Error: ", error)
+    })
+
+    const profileSubDocRef = doc(db, "users", targetUid, "profile", "main")
+    const unsubscribeProfileSubDoc = onSnapshot(profileSubDocRef, (snapshot) => {
+      if (snapshot.exists()) {
+        setProfile((current) => ({ ...current, ...snapshot.data() }))
+      }
+    }, (error) => {
+      console.error("Firestore Profile SubDoc Sync Error: ", error)
     })
 
     // 2. Links 실시간 동기화 (users/{uid}/links)
@@ -278,6 +289,7 @@ function LinkTreeContent() {
 
     return () => {
       unsubscribeProfile()
+      unsubscribeProfileSubDoc()
       unsubscribeLinks()
       unsubscribeSocials()
     }

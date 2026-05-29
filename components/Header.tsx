@@ -154,6 +154,18 @@ export default function Header({ activePreset, isDashboard = false }: HeaderProp
       console.error("Header profile snapshot error:", error)
     })
 
+    const profileSubDocRef = doc(db, "users", user.uid, "profile", "main")
+    const unsubscribeProfileSubDoc = onSnapshot(profileSubDocRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data()
+        if (data.displayName) {
+          setCustomProfileName(data.displayName)
+        }
+      }
+    }, (error) => {
+      console.error("Header profile subdoc snapshot error:", error)
+    })
+
     // 2. 등록된 링크 총 개수 실시간 구독
     const linksRef = collection(db, "users", user.uid, "links")
     const unsubscribeLinks = onSnapshot(linksRef, (snapshot) => {
@@ -179,6 +191,7 @@ export default function Header({ activePreset, isDashboard = false }: HeaderProp
 
     return () => {
       unsubscribeProfile()
+      unsubscribeProfileSubDoc()
       unsubscribeLinks()
       unsubscribeSocials()
     }
@@ -411,7 +424,7 @@ export default function Header({ activePreset, isDashboard = false }: HeaderProp
                         className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] font-extrabold transition-all hover:scale-[1.01] active:scale-[0.99] text-white ${primaryBg} shadow-md hover:brightness-110 cursor-pointer`}
                       >
                         <Settings className="h-3.5 w-3.5" />
-                        <span>내 설정 대시보드</span>
+                        <span>마이페이지</span>
                       </button>
                     )}
                   </div>
@@ -442,4 +455,3 @@ export default function Header({ activePreset, isDashboard = false }: HeaderProp
     </header>
   )
 }
-
