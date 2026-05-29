@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { 
   Sparkles, Plus, Trash2, Link2, 
   User, FileText, BadgePlus, HelpCircle, RotateCcw, 
-  LayoutTemplate, AlertTriangle, Globe, Mail, Check, X, Edit3, Lock, MousePointerClick
+  LayoutTemplate, AlertTriangle, Globe, Mail, Check, X, Edit3, Lock
 } from "lucide-react"
 import { dummyLinks, dummySocials, defaultTags, getFaviconUrl, LinkItem, SocialItem } from "@/Data/links"
 import { Card } from "@/components/ui/card"
@@ -390,8 +390,6 @@ export default function MyPage() {
 
   // 활성 프리셋 정보 로드
   const activePreset = themePresets.find(p => p.id === activeThemeId) || themePresets[0]
-  const totalClickCount = links.reduce((total, link) => total + (link.clickCount || 0), 0)
-  const linksByClickCount = [...links].sort((a, b) => (b.clickCount || 0) - (a.clickCount || 0))
 
   // 알림 피드백 노출 유틸리티
   const showToast = (message: string) => {
@@ -1288,9 +1286,14 @@ export default function MyPage() {
                       </div>
                     ) : (
                       <div className="overflow-hidden">
-                        <h4 className="text-xs font-bold text-zinc-100 group-hover:text-white truncate">
-                          {link.title}
-                        </h4>
+                        <div className="flex min-w-0 items-center gap-2">
+                          <h4 className="truncate text-xs font-bold text-zinc-100 group-hover:text-white">
+                            {link.title}
+                          </h4>
+                          <span className="shrink-0 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-black text-emerald-300">
+                            {(link.clickCount || 0).toLocaleString()} 클릭
+                          </span>
+                        </div>
                         <p className="text-[10px] text-zinc-500 truncate mt-0.5 max-w-[200px] sm:max-w-[280px]">
                           {link.url}
                         </p>
@@ -1355,58 +1358,7 @@ export default function MyPage() {
           </div>
         </Card>
 
-        {/* CARD 4: 링크 클릭 통계 */}
-        <Card className={`p-5 backdrop-blur-xl border flex flex-col gap-4 ${activePreset.cardClass}`}>
-          <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-3">
-            <div className="flex items-center gap-2">
-              <MousePointerClick className={`h-4.5 w-4.5 ${activePreset.primaryText}`} />
-              <h2 className="text-sm font-bold text-white tracking-wide">링크 클릭 통계</h2>
-            </div>
-            <span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${activePreset.badgeBg}`}>
-              실시간
-            </span>
-          </div>
-
-          <div className="rounded-2xl border border-white/5 bg-zinc-950/40 p-5 text-left">
-            <p className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">
-              총 클릭수
-            </p>
-            <p className="mt-2 text-3xl font-black tracking-tight text-white sm:text-4xl">
-              총 {totalClickCount.toLocaleString()} 클릭
-            </p>
-          </div>
-
-          <div className="grid gap-2 sm:grid-cols-2">
-            {linksByClickCount.length > 0 ? (
-              linksByClickCount.map((link) => (
-                <div
-                  key={link.id}
-                  className="flex items-center justify-between gap-3 rounded-2xl border border-white/5 bg-zinc-950/30 px-3.5 py-3 text-left"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-xs font-extrabold text-zinc-100">
-                      {link.title || "제목 없는 링크"}
-                    </p>
-                    <p className="mt-0.5 truncate text-[10px] font-medium text-zinc-500">
-                      {link.url.replace(/^https?:\/\/(www\.)?/, "")}
-                    </p>
-                  </div>
-                  <span className="shrink-0 rounded-full bg-white/5 px-2.5 py-1 text-xs font-black text-zinc-200">
-                    {(link.clickCount || 0).toLocaleString()}
-                  </span>
-                </div>
-              ))
-            ) : (
-              <div className="rounded-2xl border border-dashed border-white/5 bg-zinc-950/20 px-4 py-8 text-center sm:col-span-2">
-                <p className="text-xs font-medium text-zinc-500">
-                  클릭 통계를 표시할 링크가 없습니다.
-                </p>
-              </div>
-            )}
-          </div>
-        </Card>
-
-        {/* CARD 5: 소셜 아이콘 바 설정 (고정 5대 플랫폼 구성) */}
+        {/* CARD 4: 소셜 아이콘 바 설정 (고정 5대 플랫폼 구성) */}
         <Card className={`p-5 backdrop-blur-xl border flex flex-col gap-4 ${activePreset.cardClass}`}>
           <div className="flex items-center gap-2 border-b border-white/10 pb-3">
             <Globe className={`h-4.5 w-4.5 ${activePreset.primaryText}`} />

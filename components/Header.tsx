@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/context/AuthContext"
 import { 
   Sparkles, LogOut, Settings, Eye, Mail, 
-  Link2, Share2, Palette, ChevronDown, ChevronUp, Home
+  Link2, Share2, Palette, ChevronDown, ChevronUp, Home, BarChart3
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { db } from "@/lib/firebase"
@@ -475,16 +475,32 @@ export default function Header({ activePreset, isDashboard = false, isPublicProf
                         </button>
                       </>
                     ) : isDashboard ? (
-                      <button
-                        onClick={() => {
-                          setIsDropdownOpen(false)
-                          router.push(publicPageHref)
-                        }}
-                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] font-extrabold transition-all hover:scale-[1.01] active:scale-[0.99] text-white ${primaryBg} shadow-md hover:brightness-110 cursor-pointer`}
-                      >
-                        <Eye className="h-3.5 w-3.5" />
-                        <span>내 퍼블릭 페이지 보기</span>
-                      </button>
+                      <>
+                        <button
+                          onClick={() => {
+                            setIsDropdownOpen(false)
+                            router.push(publicPageHref)
+                          }}
+                          className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] font-extrabold transition-all hover:scale-[1.01] active:scale-[0.99] text-white ${primaryBg} shadow-md hover:brightness-110 cursor-pointer`}
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          <span>내 퍼블릭 페이지 보기</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setIsDropdownOpen(false)
+                            router.push("/status")
+                          }}
+                          className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] font-extrabold transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer ${
+                            isDark
+                              ? "bg-zinc-900/60 text-zinc-200 hover:bg-zinc-800"
+                              : "bg-slate-100 text-slate-800 hover:bg-slate-200"
+                          }`}
+                        >
+                          <BarChart3 className="h-3.5 w-3.5" />
+                          <span>통계 보기</span>
+                        </button>
+                      </>
                     ) : (
                       <>
                         <button
@@ -510,6 +526,20 @@ export default function Header({ activePreset, isDashboard = false, isPublicProf
                         >
                           <Settings className="h-3.5 w-3.5" />
                           <span>마이페이지</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setIsDropdownOpen(false)
+                            router.push("/status")
+                          }}
+                          className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] font-extrabold transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer ${
+                            isDark
+                              ? "bg-zinc-900/60 text-zinc-200 hover:bg-zinc-800"
+                              : "bg-slate-100 text-slate-800 hover:bg-slate-200"
+                          }`}
+                        >
+                          <BarChart3 className="h-3.5 w-3.5" />
+                          <span>통계 보기</span>
                         </button>
                       </>
                     )}
