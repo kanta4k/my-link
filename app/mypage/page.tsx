@@ -262,6 +262,7 @@ export default function MyPage() {
         id: doc.id,
         platform: doc.data().platform || doc.id,
         url: doc.data().url || "",
+        active: doc.data().active !== undefined ? doc.data().active : !!doc.data().url,
       })) as SocialItem[]
 
       const order = ['github', 'linkedin', 'twitter', 'youtube', 'instagram']
@@ -376,6 +377,23 @@ export default function MyPage() {
     setTempSocialUrl(currentUrl)
   }
 
+  // 소셜 플랫폼 활성화 상태 토글 (Firestore 연동)
+  const toggleSocialActive = async (platform: string, currentActive: boolean, url: string) => {
+    if (!user) return
+    const nextActive = !currentActive
+    try {
+      await setDoc(doc(db, "users", user.uid, "socials", platform), {
+        platform,
+        url,
+        active: nextActive
+      }, { merge: true })
+      showToast(`🔗 ${platform.toUpperCase()} 소셜 링크가 ${nextActive ? "활성화" : "비활성화"}되었습니다.`)
+    } catch (err) {
+      console.error("Failed to toggle social active in Firestore", err)
+      showToast("❌ 소셜 활성화 상태 변경에 실패했습니다.")
+    }
+  }
+
   // 소셜 미디어 링크 저장 (Firestore 연동)
   const saveSocialLink = async () => {
     if (!editingSocialPlatform || !user) return
@@ -407,9 +425,14 @@ export default function MyPage() {
     }
 
     try {
+      const existing = socials.find(s => s.platform === editingSocialPlatform)
+      // 주소가 존재하면 기본 활성화, 아니면 비활성화하되 기존 active 상태가 있으면 준수
+      const nextActive = existing ? (existing.active !== undefined ? existing.active : !!finalUrl) : !!finalUrl
+
       await setDoc(doc(db, "users", user.uid, "socials", editingSocialPlatform), {
         platform: editingSocialPlatform,
-        url: finalUrl
+        url: finalUrl,
+        active: nextActive
       }, { merge: true })
 
       setEditingSocialPlatform(null)
@@ -600,7 +623,8 @@ export default function MyPage() {
           const docRef = doc(db, "users", user.uid, "socials", item.platform)
           batch.set(docRef, {
             platform: item.platform,
-            url: item.url
+            url: item.url,
+            active: true
           })
         })
 
@@ -692,53 +716,57 @@ export default function MyPage() {
       <main className="relative flex min-h-svh w-full flex-col items-center justify-center overflow-x-hidden p-4 transition-all duration-700 bg-radial from-slate-950 via-zinc-950 to-neutral-950 text-slate-100">
         
         {/* 상단 앰비언트 글로우 */}
-        <div className="pointer-events-none absolute top-10 left-1/4 -z-10 h-80 w-80 rounded-full bg-fuchsia-500/10 blur-3xl" />
-        <div className="pointer-events-none absolute bottom-10 right-1/4 -z-10 h-80 w-80 rounded-full bg-cyan-500/10 blur-3xl" />
+        <div className="pointer-events-none absolute top-10 left-1/4 -z-10 h-[450px] w-[450px] rounded-full bg-fuchsia-500/10 blur-[120px]" />
+        <div className="pointer-events-none absolute bottom-10 right-1/4 -z-10 h-[450px] w-[450px] rounded-full bg-cyan-500/10 blur-[120px]" />
 
         {/* 기본 헤더 탑재 */}
         <Header isDashboard={true} />
 
-        <div className="w-full max-w-md p-8 rounded-3xl border border-white/10 bg-slate-900/40 backdrop-blur-2xl shadow-2xl flex flex-col items-center text-center gap-6 relative overflow-hidden animate-fade-in">
-          <div className="absolute -inset-0.5 rounded-3xl bg-gradient-to-r from-fuchsia-500 to-cyan-500 opacity-20 blur-sm -z-10" />
+        <div className="w-full max-w-md p-8 sm:p-10 rounded-3xl border border-white/10 bg-slate-900/35 backdrop-blur-3xl shadow-2xl flex flex-col items-center text-center gap-7 relative overflow-hidden animate-fade-in">
+          <div className="absolute -inset-0.5 rounded-3xl bg-gradient-to-r from-fuchsia-500 to-cyan-500 opacity-20 blur-xs -z-10 animate-pulse" />
 
           {/* 자물쇠 잠금 마이크로 애니메이션 */}
-          <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-zinc-950 border border-white/10 shadow-lg">
-            <Lock className="h-7.5 w-7.5 text-fuchsia-400 animate-pulse" />
+          <div className="relative flex h-20 w-20 items-center justify-center rounded-2xl bg-zinc-950/80 border border-white/10 shadow-lg">
+            <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-fuchsia-500 to-cyan-500 opacity-30 blur-xs animate-pulse" />
+            <Lock className="relative h-9 w-9 text-fuchsia-400 animate-pulse" />
           </div>
 
-          <div className="flex flex-col gap-2">
-            <h1 className="text-xl sm:text-2xl font-black bg-gradient-to-r from-white via-zinc-100 to-zinc-400 bg-clip-text text-transparent">
-              로그인 필요
+          <div className="flex flex-col gap-3">
+            <h1 className="text-2xl sm:text-3xl font-black bg-gradient-to-r from-white via-zinc-100 to-zinc-400 bg-clip-text text-transparent tracking-tight">
+              보안 설정 센터 입장
             </h1>
-            <p className="text-xs text-zinc-400 leading-relaxed max-w-xs mx-auto">
-              마이링크 설정 센터는 보호된 영역입니다. 나만의 프리미엄 링크 트리를 편집하려면 구글 로그인을 진행해 주세요.
+            <p className="text-[11px] text-zinc-400/90 leading-relaxed max-w-xs mx-auto font-medium">
+              마이링크 개인 설정 센터는 강력하게 보호되는 사적인 공간입니다. 나만의 프리미엄 비주얼 테마와 연결 링크들을 손쉽게 관리하고 브랜딩하려면 구글 계정으로 로그인해 주십시오.
             </p>
           </div>
 
+          {/* 프리미엄 구글 로그인 버튼 */}
           <button
             onClick={loginWithGoogle}
-            className="w-full flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl border border-white/10 bg-zinc-900/60 hover:bg-zinc-950 text-xs font-black text-white hover:border-fuchsia-500/40 shadow-xl transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+            className="w-full flex items-center justify-center gap-3 py-3.5 px-5 rounded-xl border border-white/10 bg-gradient-to-r from-fuchsia-500 to-cyan-500 hover:brightness-110 text-xs font-black text-white shadow-[0_10px_25px_rgba(240,46,170,0.15)] transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
           >
-            {/* Google SVG */}
-            <svg className="h-4 w-4" viewBox="0 0 24 24">
-              <path
-                fill="#EA4335"
-                d="M12 5.04c1.66 0 3.2.57 4.38 1.69l3.27-3.27C17.67 1.54 15.02 0 12 0 7.35 0 3.37 2.67 1.48 6.56l3.89 3.02c.9-2.73 3.44-4.54 6.63-4.54z"
-              />
-              <path
-                fill="#4285F4"
-                d="M23.49 12.27c0-.81-.07-1.59-.2-2.36H12v4.51h6.43c-.28 1.44-1.1 2.67-2.33 3.49l3.63 2.81c2.12-1.95 3.36-4.82 3.36-8.45z"
-              />
-              <path
-                fill="#FBBC05"
-                d="M5.37 14.54c-.24-.72-.37-1.49-.37-2.29s.13-1.57.37-2.29L1.48 6.93C.53 8.88 0 11.08 0 13.41c0 2.33.53 4.53 1.48 6.48l3.89-3.02c-.24-.72-.37-1.49-.37-2.29z"
-              />
-              <path
-                fill="#34A853"
-                d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.63-2.81c-1.01.68-2.31 1.09-3.8 1.09-3.19 0-5.73-1.81-6.63-4.54L1.98 17.85C3.87 21.33 7.85 24 12 24z"
-              />
-            </svg>
-            <span>Google 계정으로 로그인</span>
+            {/* Google SVG (하얀색 배경 서클로 고급화) */}
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-md">
+              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24">
+                <path
+                  fill="#EA4335"
+                  d="M12 5.04c1.66 0 3.2.57 4.38 1.69l3.27-3.27C17.67 1.54 15.02 0 12 0 7.35 0 3.37 2.67 1.48 6.56l3.89 3.02c.9-2.73 3.44-4.54 6.63-4.54z"
+                />
+                <path
+                  fill="#4285F4"
+                  d="M23.49 12.27c0-.81-.07-1.59-.2-2.36H12v4.51h6.43c-.28 1.44-1.1 2.67-2.33 3.49l3.63 2.81c2.12-1.95 3.36-4.82 3.36-8.45z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.37 14.54c-.24-.72-.37-1.49-.37-2.29s.13-1.57.37-2.29L1.48 6.93C.53 8.88 0 11.08 0 13.41c0 2.33.53 4.53 1.48 6.48l3.89-3.02c-.24-.72-.37-1.49-.37-2.29z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.63-2.81c-1.01.68-2.31 1.09-3.8 1.09-3.19 0-5.73-1.81-6.63-4.54L1.98 17.85C3.87 21.33 7.85 24 12 24z"
+                />
+              </svg>
+            </span>
+            <span className="tracking-wider">Google 계정으로 시작하기</span>
           </button>
         </div>
       </main>
@@ -1067,77 +1095,130 @@ export default function MyPage() {
           </div>
         </Card>
 
-        {/* CARD 4: 소셜 아이콘 바 설정 */}
+        {/* CARD 4: 소셜 아이콘 바 설정 (고정 5대 플랫폼 구성) */}
         <Card className={`p-5 backdrop-blur-xl border flex flex-col gap-4 ${activePreset.cardClass}`}>
           <div className="flex items-center gap-2 border-b border-white/10 pb-3">
             <Globe className={`h-4.5 w-4.5 ${activePreset.primaryText}`} />
             <h2 className="text-sm font-bold text-white tracking-wide">하단 소셜 미디어 주소 설정</h2>
           </div>
 
-          <p className="text-[11px] text-zinc-400 text-left">
-            메인 페이지 최하단에 정렬되는 툴팁형 소셜 아이콘 바의 연결 경로를 지정합니다.
+          <p className="text-[11px] text-zinc-400 text-left leading-relaxed">
+            메인 페이지 최하단에 정렬되는 툴팁형 소셜 아이콘 바의 연결 경로를 지정합니다. 5가지 기본 채널의 활성화 토글을 ON/OFF하여 즉각 연동 또는 배제시킬 수 있습니다.
           </p>
 
           <div className="flex flex-col gap-2.5 mt-1 text-left">
-            {socials.map((social) => {
-              const isEditing = editingSocialPlatform === social.platform
+            {['github', 'linkedin', 'twitter', 'youtube', 'instagram'].map((platform) => {
+              const social = socials.find((s) => s.platform === platform) || {
+                id: `social-temp-${platform}`,
+                platform: platform as any,
+                url: "",
+                active: false
+              }
+              const isEditing = editingSocialPlatform === platform
               const hasUrl = !!social.url
+              const isActive = social.active !== undefined ? social.active : false
 
               return (
                 <div 
-                  key={social.id}
-                  className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-zinc-950/40 rounded-2xl border transition-all duration-300 ${
-                    hasUrl || isEditing 
-                      ? "border-white/5 opacity-100" 
-                      : "border-white/0 opacity-40 hover:opacity-75"
+                  key={platform}
+                  className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 p-3.5 rounded-2xl border transition-all duration-300 ${
+                    hasUrl && isActive
+                      ? "bg-zinc-950/50 border-emerald-500/20 opacity-100 shadow-[0_0_15px_rgba(16,185,129,0.03)]" 
+                      : hasUrl
+                        ? "bg-zinc-950/40 border-white/5 opacity-85"
+                        : "bg-zinc-950/20 border-white/0 opacity-40 hover:opacity-60"
                   }`}
                 >
-                  <div className="flex items-center gap-2.5">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/5 border border-white/5 text-zinc-300">
-                      {renderSocialIcon(social.platform)}
-                    </span>
-                    <span className="text-xs font-black text-zinc-200 capitalize w-16">{social.platform}</span>
+                  {/* 플랫폼 아이콘 및 상태 뱃지 */}
+                  <div className="flex items-center justify-between sm:justify-start gap-2.5">
+                    <div className="flex items-center gap-2.5">
+                      <span className={`flex h-7.5 w-7.5 items-center justify-center rounded-xl bg-white/5 border text-zinc-300 transition-colors ${
+                        hasUrl && isActive ? "border-emerald-500/30 text-emerald-400" : "border-white/5"
+                      }`}>
+                        {renderSocialIcon(platform, "h-4.5 w-4.5")}
+                      </span>
+                      <span className="text-xs font-black text-zinc-200 capitalize w-16">{platform}</span>
+                    </div>
+
+                    {/* 활성/비활성 뱃지 */}
+                    {hasUrl ? (
+                      <span className={`text-[9px] font-black px-2 py-0.5 rounded-md ${
+                        isActive 
+                          ? "bg-emerald-500/10 border border-emerald-500/25 text-emerald-400" 
+                          : "bg-zinc-800 border border-zinc-700 text-zinc-400"
+                      }`}>
+                        {isActive ? "활성" : "대기"}
+                      </span>
+                    ) : (
+                      <span className="text-[9px] font-black px-2 py-0.5 rounded-md bg-zinc-950/60 border border-white/5 text-zinc-500">
+                        미설정
+                      </span>
+                    )}
                   </div>
 
-                  <div className="flex-grow flex items-center gap-2 w-full sm:w-auto">
+                  <div className="flex-grow flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
                     {isEditing ? (
                       <div className="flex gap-2 w-full">
                         <Input
                           type="text"
                           value={tempSocialUrl}
                           onChange={(e) => setTempSocialUrl(e.target.value)}
-                          placeholder={social.platform === 'email' ? "unhak@example.com" : "URL 주소를 적어주세요."}
-                          className={cn("flex-grow px-3 py-1.5 h-8.5", getFocusRingClass(activeThemeId))}
+                          placeholder="URL 주소를 입력해 주세요."
+                          className={cn("flex-grow px-3 py-1.5 h-8.5 text-xs", getFocusRingClass(activeThemeId))}
                           autoFocus
                         />
                         <button
                           onClick={saveSocialLink}
-                          className="p-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-black cursor-pointer"
+                          className="p-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-black cursor-pointer transition-transform active:scale-95"
                           title="주소 저장"
                         >
                           <Check className="h-3 w-3" />
                         </button>
                         <button
                           onClick={() => setEditingSocialPlatform(null)}
-                          className="px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400 text-xs font-semibold cursor-pointer"
+                          className="px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400 text-xs font-semibold cursor-pointer border border-white/5"
                         >
                           취소
                         </button>
                       </div>
                     ) : (
                       <>
-                        <span className={`text-[10px] font-medium truncate max-w-[160px] sm:max-w-[200px] flex-grow text-right pr-2 ${
-                          hasUrl ? "text-zinc-500" : "text-zinc-600 italic"
+                        {/* 소셜 연결 주소 */}
+                        <span className={`text-[10px] font-bold truncate max-w-[160px] sm:max-w-[200px] flex-grow text-right pr-2 select-all ${
+                          hasUrl ? "text-zinc-400" : "text-zinc-600 italic"
                         }`}>
-                          {hasUrl ? social.url : "(미설정 / 사용 안 함)"}
+                          {hasUrl ? social.url : "(소셜 주소 미지정)"}
                         </span>
-                        <button
-                          onClick={() => startEditingSocial(social.platform, social.url)}
-                          className="flex items-center gap-1 py-1 px-2.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 text-[10px] font-bold text-zinc-300 hover:text-white cursor-pointer"
-                        >
-                          <Edit3 className="h-3 w-3" />
-                          <span>주소 수정</span>
-                        </button>
+
+                        <div className="flex items-center gap-2.5 flex-shrink-0">
+                          {/* 주소 수정 버튼 */}
+                          <button
+                            onClick={() => startEditingSocial(platform, social.url)}
+                            className="flex items-center gap-1 py-1.5 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 text-[10px] font-bold text-zinc-300 hover:text-white cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98]"
+                          >
+                            <Edit3 className="h-3 w-3" />
+                            <span>주소 입력</span>
+                          </button>
+
+                          {/* 활성화 토글 스위치 */}
+                          <button
+                            onClick={() => toggleSocialActive(platform, isActive, social.url)}
+                            disabled={!hasUrl}
+                            className={cn(
+                              "relative inline-flex h-5.5 w-10 flex-shrink-0 cursor-pointer rounded-full border border-transparent transition-colors duration-200 ease-in-out focus:outline-none items-center",
+                              isActive && hasUrl ? "bg-emerald-500" : "bg-zinc-800",
+                              !hasUrl && "opacity-30 cursor-not-allowed"
+                            )}
+                            title={hasUrl ? "활성화/비활성화 토글" : "주소를 먼저 입력해야 활성화할 수 있습니다."}
+                          >
+                            <span
+                              className={cn(
+                                "pointer-events-none inline-block h-4.5 w-4.5 transform rounded-full bg-white shadow-md transition duration-200 ease-in-out",
+                                isActive && hasUrl ? "translate-x-4.5" : "translate-x-0.5"
+                              )}
+                            />
+                          </button>
+                        </div>
                       </>
                     )}
                   </div>

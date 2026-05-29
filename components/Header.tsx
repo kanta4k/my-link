@@ -98,23 +98,25 @@ export default function Header({ activePreset, isDashboard = false }: HeaderProp
             </Button>
           ) : (
             // 로그인 상태: 사용자 아바타 및 동작 버튼
-            <div className="flex items-center gap-3">
-              {/* 사용자 정보 배지 */}
-              <div className="hidden sm:flex items-center gap-2 pl-2.5 pr-3 py-1 rounded-xl bg-black/10 dark:bg-white/5 border border-white/5">
+            <div className="flex items-center gap-2.5">
+              {/* 사용자 정보 배지 (모바일에서도 아바타 상시 노출) */}
+              <div className={`flex items-center gap-2 pl-2 pr-2 sm:pr-3 py-1 rounded-xl border transition-colors ${
+                isDark ? "bg-black/20 border-white/5" : "bg-slate-100 border-slate-200"
+              }`}>
                 {user.photoURL ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img 
                     src={user.photoURL} 
                     alt="유저 프로필" 
-                    className="h-5 w-5 rounded-full border border-white/10" 
+                    className="h-5 w-5 rounded-full border border-white/15 shadow-sm" 
                   />
                 ) : (
                   <div className="flex h-5 w-5 items-center justify-center rounded-full bg-zinc-700 text-[10px] font-black text-white">
                     {user.displayName ? user.displayName.substring(0,1).toUpperCase() : "U"}
                   </div>
                 )}
-                <span className={`text-[11px] font-extrabold max-w-[80px] truncate ${
-                  isDark ? "text-zinc-200" : "text-slate-700"
+                <span className={`text-[11px] font-extrabold max-w-[80px] truncate hidden xs:inline-block ${
+                  isDark ? "text-zinc-300" : "text-slate-700"
                 }`}>
                   {user.displayName || "사용자"}
                 </span>
@@ -145,19 +147,20 @@ export default function Header({ activePreset, isDashboard = false }: HeaderProp
                 </Button>
               )}
 
-              {/* 로그아웃 버튼 (Shadcn UI Button 활용) */}
+              {/* 로그아웃 버튼 (명확한 아웃라인 및 붉은색 계열 경고 톤 피드백) */}
               <Button
                 onClick={logout}
                 variant="outline"
-                size="icon"
-                className={`rounded-xl transition-all cursor-pointer hover:scale-105 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 ${
+                size="lg"
+                className={`flex items-center gap-1.5 rounded-xl px-3 text-xs font-extrabold transition-all cursor-pointer hover:scale-105 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/35 border-red-500/15 ${
                   isDark 
-                    ? "bg-zinc-900/60 border-white/10 text-zinc-400" 
-                    : "bg-white border-slate-200 text-slate-500"
+                    ? "bg-zinc-900/60 text-red-300/90" 
+                    : "bg-white text-red-600/90"
                 }`}
                 title="로그아웃"
               >
-                <LogOut className="h-4 w-4" />
+                <LogOut className="h-3.5 w-3.5" />
+                <span className="hidden xs:inline">로그아웃</span>
               </Button>
             </div>
           )}

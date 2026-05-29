@@ -14,6 +14,7 @@ export interface SocialItem {
   id: string;
   platform: 'github' | 'linkedin' | 'twitter' | 'youtube' | 'instagram' | 'blog' | 'email';
   url: string;
+  active?: boolean;
 }
 
 export const dummyLinks: LinkItem[] = [
@@ -49,26 +50,31 @@ export const dummySocials: SocialItem[] = [
     id: 'social-1',
     platform: 'github',
     url: 'https://github.com',
+    active: true,
   },
   {
     id: 'social-2',
     platform: 'linkedin',
     url: 'https://linkedin.com',
+    active: true,
   },
   {
     id: 'social-3',
     platform: 'twitter',
     url: 'https://twitter.com',
+    active: true,
   },
   {
     id: 'social-4',
     platform: 'youtube',
     url: 'https://youtube.com',
+    active: true,
   },
   {
     id: 'social-5',
     platform: 'instagram',
     url: 'https://instagram.com',
+    active: true,
   },
 ];
 
